@@ -1,19 +1,26 @@
-# VC Copilot - Backend API
+# VC Copilot
 
-A backend API for analyzing startup websites and providing insights using AI.
+An AI-powered tool for analyzing startup websites and providing insights for venture capital decision-making.
 
 ## Features
 
 - Website Scraping: Extract essential data from startup websites
 - Executive Summary: Generate deep dive analysis of the startup
 - Founder Success Prediction: Evaluate founders based on scientific criteria
+- Modern Web Interface: User-friendly dashboard for analysis results
 
 ## Tech Stack
 
 ### Backend
 - FastAPI (Python) with simplified endpoints
 - OpenAI API for executive summary and founder evaluation
-- No database dependency (stateless API)
+- Web scraping with BeautifulSoup and Playwright
+
+### Frontend
+- Next.js with TypeScript
+- Tailwind CSS for styling
+- Zustand for state management
+- React components for UI
 
 ### Architecture
 - Modular design with core components:
@@ -21,12 +28,13 @@ A backend API for analyzing startup websites and providing insights using AI.
   - Deep dive analysis module
   - Founder success prediction module
 - Simplified API with a single `/analyze` endpoint
-- Robust error handling and fallback mechanisms for API calls
+- Responsive UI with dashboard for viewing results
 
 ## Getting Started
 
 ### Prerequisites
 - Python 3.9+
+- Node.js 18+ and npm/yarn
 - OpenAI API key
 
 ### Installation
@@ -37,23 +45,44 @@ git clone https://github.com/luisschmitz/VC-Copilot.git
 cd VC-Copilot
 ```
 
-2. Install backend dependencies
+2. Set up the backend
 ```bash
-cd backend
+# Create and activate a virtual environment (optional but recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install backend dependencies
 pip install -r requirements.txt
-```
 
-3. Set up environment variables
-```bash
+# Set up environment variables
 cd backend
-cp .env.example .env
+cp .env.example .env  # If .env.example exists, otherwise create a new .env file
 # Edit .env and add your OpenAI API key
+cd ..
 ```
 
-4. Run the backend server
+3. Set up the frontend
 ```bash
-python run_backend.py
+cd frontend
+npm install
+# or if you use yarn
+# yarn install
 ```
+
+4. Run the application
+```bash
+# In one terminal, start the backend server
+python run_backend.py
+
+# In another terminal, start the frontend development server
+python run_frontend.py
+# or directly with npm
+# cd frontend && npm run dev
+```
+
+5. Access the application
+   - Backend API: http://localhost:8000
+   - Frontend: http://localhost:3000
 
 ## API Usage
 
