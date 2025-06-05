@@ -1,0 +1,33 @@
+2025-06-02 22:09:24,977 - backend.main - INFO - Scraping website: https://www.helix-db.com
+2025-06-02 22:09:54,176 - backend.main - INFO - Analyzing data for HelixDB
+2025-06-02 22:09:54,177 - backend.main - INFO - Running SWOT analysis
+2025-06-02 22:09:55,085 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-06-02 22:09:55,087 - backend.main - ERROR - Error in OpenAI API call: Error code: 400 - {'error': {'message': "Invalid parameter: 'response_format' of type 'json_object' is not supported with this model.", 'type': 'invalid_request_error', 'param': 'response_format', 'code': None}}
+2025-06-02 22:10:29,455 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-06-02 22:10:29,457 - backend.main - ERROR - Error in deep dive analysis: Error code: 400 - {'error': {'message': "Invalid parameter: 'response_format' of type 'json_object' is not supported with this model.", 'type': 'invalid_request_error', 'param': 'response_format', 'code': None}}
+2025-06-02 22:11:08,810 - backend.main - INFO - Evaluating founders for HelixDB
+2025-06-02 22:11:09,024 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-06-02 22:11:09,025 - backend.main - ERROR - Error in founder evaluation: Error code: 400 - {'error': {'message': "Invalid parameter: 'response_format' of type 'json_object' is not supported with this model.", 'type': 'invalid_request_error', 'param': 'response_format', 'code': None}}
+2025-06-02 22:11:32,550 - backend.main - INFO - Scraping website: https://www.helix-db.com
+2025-06-02 22:11:32,763 - backend.main - INFO - Analyzing data for HelixDB
+2025-06-02 22:11:32,763 - backend.main - INFO - Running SWOT analysis
+2025-06-02 22:11:33,345 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-06-02 22:11:33,347 - backend.main - ERROR - Error in OpenAI API call: Error code: 400 - {'error': {'message': "Invalid parameter: 'response_format' of type 'json_object' is not supported with this model.", 'type': 'invalid_request_error', 'param': 'response_format', 'code': None}}
+2025-06-02 22:13:53,110 - backend.main - INFO - Scraping website: https://www.helix-db.com
+2025-06-02 22:13:53,833 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-06-02 22:13:53,836 - backend.main - INFO - Model does not support response_format, trying without it
+2025-06-02 22:13:54,774 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-06-02 22:13:54,786 - backend.main - ERROR - Error in deep dive analysis: Expecting value: line 1 column 1 (char 0)
+2025-06-02 22:13:54,787 - backend.main - INFO - Evaluating founders for HelixDB
+2025-06-02 22:13:54,959 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-06-02 22:13:54,959 - backend.main - INFO - Model does not support response_format, trying without it
+2025-06-02 22:14:15,357 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-06-02 22:16:44,775 - backend.main - INFO - Scraping website: https://www.helix-db.com
+2025-06-02 22:16:45,195 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-06-02 22:16:45,197 - backend.main - INFO - Model does not support response_format, trying without it
+2025-06-02 22:16:49,313 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-06-02 22:16:49,325 - backend.main - INFO - Response is not valid JSON, extracting structured information
+2025-06-02 22:16:49,327 - backend.main - INFO - Evaluating founders for HelixDB
+2025-06-02 22:16:49,510 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2025-06-02 22:16:49,511 - backend.main - INFO - Model does not support response_format, trying without it
+2025-06-02 22:17:13,747 - httpx - INFO - HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"

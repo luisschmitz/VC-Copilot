@@ -1,37 +1,33 @@
-# VC Copilot
+# VC Copilot - Backend API
 
-A tool to analyze startup websites and provide insights using AI.
+A backend API for analyzing startup websites and providing insights using AI.
 
 ## Features
 
-- URL Analysis: Input a startup website URL
-- Web Scraping: Extract company information, team details, and product descriptions
-- AI Analysis: Leverage GPT to analyze the collected data
-- Results Storage: Save and retrieve past analyses
-- Export: Download results as PDF or JSON
+- Website Scraping: Extract essential data from startup websites
+- Executive Summary: Generate deep dive analysis of the startup
+- Founder Success Prediction: Evaluate founders based on scientific criteria
 
 ## Tech Stack
 
-### Frontend
-- Next.js with React
-- Deployed on Vercel (Free Tier)
-- Static site generation and serverless functions
-
 ### Backend
-- FastAPI (Python) or Next.js API routes
-- PostgreSQL database on Railway (Free Tier)
-- OpenAI API for analysis
+- FastAPI (Python) with simplified endpoints
+- OpenAI API for executive summary and founder evaluation
+- No database dependency (stateless API)
 
-### Data Storage
-- Railway PostgreSQL for structured data
-- GitHub repository as CDN for static assets
+### Architecture
+- Modular design with core components:
+  - Website scraper module
+  - Deep dive analysis module
+  - Founder success prediction module
+- Simplified API with a single `/analyze` endpoint
+- Robust error handling and fallback mechanisms for API calls
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js 18+
 - Python 3.9+
-- PostgreSQL (for local development)
+- OpenAI API key
 
 ### Installation
 
@@ -41,44 +37,56 @@ git clone https://github.com/luisschmitz/VC-Copilot.git
 cd VC-Copilot
 ```
 
-2. Install frontend dependencies
-```bash
-npm install
-```
-
-3. Install backend dependencies
+2. Install backend dependencies
 ```bash
 cd backend
 pip install -r requirements.txt
 ```
 
-4. Set up environment variables
+3. Set up environment variables
 ```bash
-# For frontend
-cp .env.example .env
-
-# For backend
 cd backend
 cp .env.example .env
 # Edit .env and add your OpenAI API key
 ```
 
-5. Run the development server
+4. Run the backend server
 ```bash
-# Start the frontend
-npm run dev
-
-# In a separate terminal, start the backend
-cd backend
-python main.py
+python run_backend.py
 ```
 
-## Usage
+## API Usage
 
-1. Navigate to the application in your browser
-2. Enter a startup website URL
-3. View the analysis results
-4. Export or save the results as needed
+### Analyze Endpoint
+```
+POST /analyze
+```
+
+Request body:
+```json
+{
+  "url": "https://example-startup.com"
+}
+```
+
+Response:
+```json
+{
+  "company_name": "Example Startup",
+  "executive_summary": "...",
+  "key_insights": ["...", "..."],
+  "key_risks": ["...", "..."],
+  "success_prediction": "High",
+  "overall_assessment": "...",
+  "evaluation_criteria": {...}
+}
+```
+
+## Testing
+
+### Interactive Testing
+Use the provided Jupyter notebook to test the functionality:
+- `vc_copilot_test.ipynb`: Tests the backend API functionality
 
 ## License
 
