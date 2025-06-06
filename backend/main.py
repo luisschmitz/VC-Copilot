@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any, List, Union
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Query, Path, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl, Field
+from sqlalchemy.orm import Session
 import requests
 from bs4 import BeautifulSoup
 import asyncio
@@ -43,7 +44,11 @@ app = FastAPI(title="Startup Analyzer API")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For production, replace with specific origins
+    allow_origins=[
+        "http://localhost:3000",  # Local development
+        "https://vc-copilot.vercel.app",  # Vercel deployment (update with your actual domain)
+        "https://vc-copilot-frontend.vercel.app"  # Alternative Vercel domain format
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -85,9 +90,12 @@ class StartupAnalysis(BaseModel):
     founder_evaluation: Optional[Dict[str, Any]] = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
-# In-memory database for demo purposes
-# In production, use a proper database like MongoDB or PostgreSQL
-analyses_db = {}
+# Import database modules
+from models import StartupAnalysis, get_db, create_tables
+import database as db_ops
+
+# Create database tables
+create_tables()
 
 # Pagination model
 class PaginatedResponse(BaseModel):
@@ -110,10 +118,11 @@ async def analyze_startup(request: StartupAnalysisRequest):
     normalized_url = parsed_url.netloc + parsed_url.path.rstrip('/')
     
     # Check if we already have an analysis for this URL
-    for analysis_id, analysis in analyses_db.items():
-        if analysis.url == normalized_url and set(analysis.data_sources) == set(request.data_sources) and set(analysis.analysis_types) == set(request.analysis_types):
-            logger.info(f"Returning existing analysis for {normalized_url}")
-            return analysis
+    db = next(get_db())
+    existing_analysis = db_ops.get_analysis_by_url(db, normalized_url)
+    if existing_analysis:
+        logger.info(f"Returning existing analysis for {normalized_url}")
+        return existing_analysis
     
     try:
         # Step 1: Scrape the website
@@ -125,7 +134,8 @@ async def analyze_startup(request: StartupAnalysisRequest):
         analysis.url = normalized_url
         
         # Store the result
-        analyses_db[analysis.id] = analysis
+        db = next(get_db())
+        db_ops.create_analysis(db, analysis.dict())
         
         return analysis
     except Exception as e:
@@ -133,23 +143,19 @@ async def analyze_startup(request: StartupAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/analyses", response_model=PaginatedResponse)
-async def get_analyses(page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100)):
+async def get_analyses(page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
     """Get paginated list of analyses"""
     try:
-        # Convert to list for pagination
-        all_analyses = list(analyses_db.values())
+        # Get analyses with pagination
+        skip = (page - 1) * page_size
+        analyses = db_ops.get_all_analyses(db, skip=skip, limit=page_size)
         
-        # Sort by created_at (newest first)
-        all_analyses.sort(key=lambda x: x.created_at, reverse=True)
-        
-        # Calculate pagination
-        total = len(all_analyses)
+        # Get total count
+        total = db.query(StartupAnalysis).count()
         total_pages = (total + page_size - 1) // page_size
-        start_idx = (page - 1) * page_size
-        end_idx = min(start_idx + page_size, total)
         
         # Get items for current page
-        items = all_analyses[start_idx:end_idx]
+        items = analyses
         
         return {
             "items": items,
@@ -163,38 +169,27 @@ async def get_analyses(page: int = Query(1, ge=1), page_size: int = Query(10, ge
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/analyses/{analysis_id}", response_model=StartupAnalysis)
-async def get_analysis(analysis_id: str = Path(...)):
+async def get_analysis(analysis_id: str = Path(...), db: Session = Depends(get_db)):
     """Get a specific analysis by ID"""
-    if analysis_id not in analyses_db:
+    analysis = db_ops.get_analysis_by_id(db, analysis_id)
+    if not analysis:
         raise HTTPException(status_code=404, detail="Analysis not found")
     
-    return analyses_db[analysis_id]
+    return analysis
 
 @app.get("/api/search", response_model=PaginatedResponse)
-async def search_analyses(query: str = Query(...), page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100)):
+async def search_analyses(query: str = Query(...), page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
     """Search analyses by company name or URL"""
     try:
-        # Convert to list for filtering
-        all_analyses = list(analyses_db.values())
+        # Search analyses
+        filtered_analyses = db_ops.search_analyses(db, query, limit=page_size)
         
-        # Filter by query
-        query = query.lower()
-        filtered_analyses = [
-            analysis for analysis in all_analyses
-            if query in analysis.company_name.lower() or query in analysis.url.lower()
-        ]
-        
-        # Sort by created_at (newest first)
-        filtered_analyses.sort(key=lambda x: x.created_at, reverse=True)
-        
-        # Calculate pagination
-        total = len(filtered_analyses)
+        # Get total count for the search
+        total = len(filtered_analyses)  # This is simplified; in production you'd use a COUNT query
         total_pages = (total + page_size - 1) // page_size
-        start_idx = (page - 1) * page_size
-        end_idx = min(start_idx + page_size, total)
         
         # Get items for current page
-        items = filtered_analyses[start_idx:end_idx]
+        items = filtered_analyses
         
         return {
             "items": items,
