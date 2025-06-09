@@ -1,0 +1,23 @@
+# Ignore frontend files to reduce build size
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Ignore development files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.coverage
+**/.DS_Store
+
+# Ignore version control
+.git/
+.gitignore
+
+# Ignore environment files
+.env
+backend/.env
+frontend/.env*
+!frontend/.env.production.example
