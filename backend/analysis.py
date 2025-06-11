@@ -8,6 +8,7 @@ from datetime import datetime
 from openai import OpenAI
 import uuid
 from dotenv import load_dotenv
+from .founder_info import FounderInfo
 
 # Configure logging
 logging.basicConfig(
@@ -33,6 +34,8 @@ class AnalysisRequest(BaseModel):
     scrape_pages: Optional[List[str]] = None
     additional_sources: Optional[List[str]] = None
 
+# FounderInfo is imported at the top of the file
+
 class AnalysisResponse(BaseModel):
     company_name: str
     url: Optional[str] = None
@@ -40,6 +43,8 @@ class AnalysisResponse(BaseModel):
     success_prediction: Optional[bool] = None
     overall_assessment: Optional[str] = None
     evaluation_criteria: Optional[Dict[str, Dict[str, Any]]] = None
+    founder_info: Optional[List[FounderInfo]] = None  # Structured founder information
+    founding_story: Optional[str] = None  # How the founders met
     raw_llm_response: Optional[str] = None  # Raw LLM response for debugging
     timestamp: datetime = Field(default_factory=datetime.now)
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -179,48 +184,54 @@ def parse_all_markdown_sections(text: str) -> Dict[str, str]:
     
     return sections
 
-async def run_deep_dive_analysis(company_name: str, description: str, raw_text: str) -> Dict[str, Any]:
+async def run_deep_dive_analysis(scraped_data: dict, founder_data: dict = None, funding_data: dict = None) -> Dict[str, Any]:
     """
-    Generate a deep dive analysis of the startup based on scraped website data
+    Generate a deep dive analysis of the startup based on scraped website data and additional information
+    
+    Args:
+        scraped_data: Dictionary containing scraped website data (company_name, description, raw_text)
+        founder_data: Optional dictionary with founder information
+        funding_data: Optional dictionary with funding and news information
     """
+    company_name = scraped_data.get('company_name', '')
+    description = scraped_data.get('description', '')
     logger.info(f"Running deep dive analysis for: {company_name}")
     
+    # Debug logging for input data
+    logger.info(f"Deep dive input - Company: {company_name}")
+    logger.info(f"Deep dive input - Description length: {len(description) if description else 0}")
+    logger.info(f"Deep dive input - Has founder data: {bool(founder_data)}")
+    logger.info(f"Deep dive input - Has funding data: {bool(funding_data)}")
+    
     system_prompt = (
-        "You are an expert startup analyst with deep knowledge of business models, market trends, and startup success factors.\n"
-        "Your task is to analyze a startup based on their website content and provide a comprehensive analysis.\n\n"
-        "Format your response in a structured report with clear sections and detailed analysis. Be analytical and data-driven where possible.\n\n"
-        "IMPORTANT: Use bold formatting for each section header (e.g., '**Executive Summary**').\n"
-        "Always use **bold** for section headers, not ## markdown headers."
+        "You are an expert startup analyst. Analyze the startup data provided in JSON format and generate a comprehensive analysis. "
+        "Format your response with bold section headers (e.g. '**Executive Summary**') and provide detailed analysis in each section."
     )
     
+    # Prepare data in a token-efficient JSON format
+    analysis_data = {
+        "company": company_name,
+        "desc": description,
+        "founders": founder_data,
+        "funding": funding_data.model_dump() if funding_data else {}
+    }
+    
+    # Debug logging for processed data
+    logger.info(f"Analysis data prepared - Founders count: {len(analysis_data['founders'])}")
+    logger.info(f"Analysis data prepared - Has funding info: {bool(analysis_data['funding'])}")
+    
+    # Build the user prompt with the JSON data
     user_prompt = (
-        f"Can you compile a deep dive on {company_name} with the following structure?\n\n"
-        "**Executive Summary**\n"
-        "**Key Insights**\n"
-        "**Key Risks**\n"
-        "**Team Info**\n"
-        "**Problem & Market**\n"
-        "**Solution & Product**\n"
-        "**Competition**\n"
-        "**Business Model**\n"
-        "**Traction**\n"
-        "**Funding and Investors**\n"
-        "**Conclusion**\n\n"
-        "For each section, please analyze:\n\n"
-        "1. Background and history, including founding story, initial product-market fit, and growth\n"
-        "2. Products, target users, verticals, ICP, pricing, and go-to-market strategy\n"
-        "3. Growth opportunities, AI initiatives, competitive advantages, and threats\n"
-        "4. User sentiment, product stickiness, and customer attraction\n"
-        "5. Key competitors and comparative metrics\n"
-        "6. Traction metrics, financials, revenue estimates, customer base, and notable clients\n"
-        "7. Team size, growth, location strategy, funding history, valuations, and future plans\n"
-        "8. Founder and leadership team backgrounds\n\n"
-        f"Based on the following information:\n\n"
-        f"Company Name: {company_name}\n"
-        f"Website Description: {description}\n\n"
-        f"Raw Website Content:\n"
-        f"{raw_text[:3000]}"
+        "Analyze this startup and provide insights in these sections:\n"
+        "**Executive Summary**, **Key Insights**, **Key Risks**, **Team Info**, "
+        "**Problem & Market**, **Solution & Product**, **Competition**, **Business Model**, "
+        "**Traction**, **Funding and Investors**, **Conclusion**\n\n"
+        f"Data: {json.dumps(analysis_data, default=str)}\n\n"
+        f"Raw Website Content: {scraped_data.get('raw_text', '')[:3000]}"
     )
+    
+    # Debug logging for API call
+    logger.info("Preparing to call OpenAI API for deep dive analysis")
     
     try:
         response = client.chat.completions.create(
@@ -274,19 +285,29 @@ async def evaluate_founders(company_name: str, description: str, team_info: Opti
     """
     logger.info(f"Evaluating founders for {company_name}")
     
+    # Debug logging for input data
+    logger.info(f"Founder eval input - Company: {company_name}")
+    logger.info(f"Founder eval input - Description length: {len(description) if description else 0}")
+    logger.info(f"Founder eval input - Team info count: {len(team_info) if team_info else 0}")
+    logger.info(f"Founder eval input - Has deep dive data: {bool(deep_dive_data)}")
+    
     acquired_data = {
         "company_name": company_name,
         "description": description,
         "team_info": team_info if team_info else []
     }
     
-    if deep_dive_data and 'sections' in deep_dive_data:
-        exec_summary = deep_dive_data.get('sections', {}).get('Executive Summary', '')
+    if deep_dive_data and isinstance(deep_dive_data, dict):
+        exec_summary = deep_dive_data.get('Executive Summary', '')
         if isinstance(exec_summary, dict):
             exec_summary_text = '\n'.join([f"{k}: {v}" for k, v in exec_summary.items()])
         else:
-            exec_summary_text = exec_summary
+            exec_summary_text = str(exec_summary)
         acquired_data["deep_dive"] = exec_summary_text
+    
+    # Debug logging for processed data
+    logger.info(f"Founder eval data prepared - Team info processed: {bool(acquired_data['team_info'])}")
+    logger.info(f"Founder eval data prepared - Has deep dive: {bool(acquired_data.get('deep_dive'))}")
     
     data_str = json.dumps(acquired_data, indent=2)
     

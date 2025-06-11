@@ -62,14 +62,18 @@ def kill_process(pid):
 
 def start_backend(port=DEFAULT_PORT):
     """Start the backend server"""
-    print(f"Starting VC Copilot simplified backend server on port {port}...")
+    print(f"Starting VC Copilot backend server on port {port}...")
     print("Press Ctrl+C to stop the server")
+    
+    # Add the project root to Python path
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, project_root)
     
     try:
         # Run the server with CORS enabled
         subprocess.run([
             sys.executable, "-m", "uvicorn", 
-            "backend.simplified_main:app", 
+            "backend.main:app", 
             "--host", "0.0.0.0", 
             "--port", str(port), 
             "--reload"

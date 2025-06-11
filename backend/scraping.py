@@ -20,9 +20,7 @@ class ScrapedData(BaseModel):
     contact_info: Optional[Dict[str, str]] = None
     products_services: Optional[List[Dict[str, str]]] = None
     news_data: Optional[List[Dict[str, str]]] = None
-    additional_sources: Optional[Dict[str, Any]] = None
-    scrape_depth: str = "standard"
-    pages_scraped: Optional[List[Dict[str, Any]]] = None  # Changed to Any to allow mixed types
+    pages_scraped: Optional[List[Dict[str, Any]]] = None
     total_pages_found: Optional[int] = None
 
 class SmartPageClassifier:
@@ -441,11 +439,13 @@ def extract_news_posts(soup):
     
     return news_data
 
-async def fetch_news_data(company_name: str):
+async def fetch_news_data(company_name: str) -> List[Dict[str, str]]:
     """Fetch external news data about the company"""
-    # Placeholder for external news fetching
-    logger.info(f"Fetching external news for {company_name}")
+    # This is a placeholder for future implementation
+    # In a real implementation, this would call a news API or web search
     return []
+
+# This function has been moved to founder_info.py
 
 def clean_text(text):
     """Clean and normalize text content"""
@@ -576,16 +576,27 @@ def extract_company_name(soup: BeautifulSoup, url: str) -> str:
     else:
         return extract_from_domain(url)
 
-async def scrape_website(url: str, scrape_depth: str = "standard", scrape_pages: Optional[List[str]] = None, max_pages: int = 20, additional_sources: Optional[List[str]] = None) -> ScrapedData:
+async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
+    """
+    Enhanced website scraping with smart page discovery and classification.
+    
+    Args:
+        url (str): The URL of the startup's website to scrape
+        max_pages (int, optional): Maximum number of pages to scrape. Defaults to 5.
+        
+    Returns:
+        ScrapedData: Structured data extracted from the website
+    """
     """
     Enhanced website scraping with smart page discovery and classification
     """
-    logger.info(f"Starting enhanced scraping of {url} with depth: {scrape_depth}")
+    logger.info(f"Starting enhanced scraping of {url} with max_pages: {max_pages}")
     
     classifier = SmartPageClassifier()
     pages_scraped = []
     all_discovered_links = set()
     classified_pages = defaultdict(list)
+    pages_to_scrape = deque([(url, "")])  # (url, link_text) pairs
     
     # Initialize session with better configuration
     session = requests.Session()
@@ -645,35 +656,35 @@ async def scrape_website(url: str, scrape_depth: str = "standard", scrape_pages:
         logger.info(f"Discovered {len(all_discovered_links)} internal links")
         logger.info(f"Classified pages: {dict(classified_pages)}")
         
-        # Step 4: Prioritize pages to scrape based on depth and classification
+        # Step 4: Prioritize pages to scrape based on classification and max_pages
         priority_pages = []
         
-        # Always try to get key pages
-        key_page_types = ['about', 'contact', 'products', 'team']
-        if scrape_depth == "deep":
-            key_page_types.extend(['news', 'careers'])
-        if scrape_depth == "custom" and scrape_pages:
-            key_page_types = scrape_pages
+        # Define key page types in order of importance
+        key_page_types = ['about', 'team', 'products', 'contact', 'news']
         
-        # Add classified pages first (highest priority)
+        # First, add one page from each key type if available
         for page_type in key_page_types:
-            if page_type in classified_pages:
-                for link_url, context in classified_pages[page_type][:2]:  # Max 2 per type
+            if page_type in classified_pages and classified_pages[page_type]:
+                link_url, context = classified_pages[page_type][0]
+                if len(priority_pages) < max_pages - 1:  # -1 for main page
                     priority_pages.append((link_url, context, page_type))
         
-        # Add remaining pages if we haven't reached max_pages
+        # Then fill remaining slots with other classified pages
         remaining_slots = max_pages - len(priority_pages) - 1  # -1 for main page
         if remaining_slots > 0:
-            unclassified_links = [
-                (link_url, context) for link_url, context in all_discovered_links
-                if not any(link_url == p[0] for p in priority_pages)
+            # Get remaining classified pages
+            remaining_classified = [
+                (url, ctx, ptype)
+                for ptype in classified_pages
+                for url, ctx in classified_pages[ptype]
+                if not any(url == p[0] for p in priority_pages)
             ]
             
             # Sort by URL structure (shorter URLs often more important)
-            unclassified_links.sort(key=lambda x: (len(x[0].split('/')), x[0]))
+            remaining_classified.sort(key=lambda x: (len(x[0].split('/')), x[0]))
             
-            for link_url, context in unclassified_links[:remaining_slots]:
-                priority_pages.append((link_url, context, 'general'))
+            # Add remaining classified pages
+            priority_pages.extend(remaining_classified[:remaining_slots])
         
         # Step 5: Scrape prioritized pages
         scraped_data_parts = {
@@ -684,12 +695,13 @@ async def scrape_website(url: str, scrape_depth: str = "standard", scrape_pages:
             'news_data': []
         }
         
-        for i, (page_url, context, page_type) in enumerate(priority_pages):
+        logger.info(f"Scraping {len(priority_pages)} prioritized pages")
+        for i, (page_url, context, page_type) in enumerate(priority_pages, 1):
             try:
                 if page_url == url:  # Skip if same as main page
                     continue
                 
-                logger.info(f"Scraping page {i+2}/{len(priority_pages)+1}: {page_type} - {page_url}")
+                logger.info(f"Scraping page {i}/{len(priority_pages)}: {page_url} ({page_type})")
                 
                 # Add delay to be respectful
                 if i > 0:
@@ -735,17 +747,7 @@ async def scrape_website(url: str, scrape_depth: str = "standard", scrape_pages:
                 logger.warning(f"Error scraping {page_url}: {str(e)}")
                 continue
         
-        # Step 6: Handle additional sources
-        additional_sources_data = {}
-        if additional_sources:
-            for source in additional_sources:
-                if source.lower() == "news":
-                    external_news = await fetch_news_data(company_name)
-                    if external_news:
-                        scraped_data_parts['news_data'].extend(external_news)
-                        additional_sources_data["external_news"] = external_news
-        
-        # Step 7: Create final ScrapedData object
+        # Step 6: Create final ScrapedData object
         scraped_data = ScrapedData(
             company_name=company_name,
             description=description,
@@ -756,8 +758,6 @@ async def scrape_website(url: str, scrape_depth: str = "standard", scrape_pages:
             contact_info=scraped_data_parts['contact_info'] if scraped_data_parts['contact_info'] else None,
             products_services=scraped_data_parts['products_services'] if scraped_data_parts['products_services'] else None,
             news_data=scraped_data_parts['news_data'] if scraped_data_parts['news_data'] else None,
-            additional_sources=additional_sources_data if additional_sources_data else None,
-            scrape_depth=scrape_depth,
             pages_scraped=pages_scraped,
             total_pages_found=len(all_discovered_links)
         )
