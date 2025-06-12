@@ -15,14 +15,14 @@ load_dotenv()
 class FounderInfo(BaseModel):
     """Model for structured founder information"""
     name: str
-    title: Optional[str] = None
+    title: Optional[str] = "Not publicly listed"
     education: Optional[List[Dict[str, str]]] = None
     work_experience: Optional[List[Dict[str, str]]] = None
     achievements: Optional[List[str]] = None
     previous_startups: Optional[List[Dict[str, str]]] = None
     expertise: Optional[List[str]] = None
-    age: Optional[int] = None
-    location: Optional[str] = None
+    age: Optional[str] = "Not publicly listed"
+    location: Optional[str] = "Not publicly listed"
     social_profiles: Optional[Dict[str, str]] = None
 
 class FounderResponse(BaseModel):
@@ -31,6 +31,94 @@ class FounderResponse(BaseModel):
     founding_story: Optional[str] = None
     company_name: str
     url: str
+
+def clean_json_content(content: str) -> str:
+    """Clean JSON content from markdown and comments"""
+    # Remove markdown code blocks
+    content = re.sub(r'```json\s*', '', content)
+    content = re.sub(r'```\s*', '', content)
+    
+    # Remove comments
+    content = re.sub(r'#[^\n]*', '', content)
+    content = re.sub(r'//[^\n]*', '', content)
+    
+    # Remove trailing commas
+    content = re.sub(r',(\s*[}\]])', r'\1', content)
+    
+    # Clean up whitespace
+    content = content.strip()
+    
+    return content
+
+def parse_response(content: str) -> Tuple[List[FounderInfo], Optional[str]]:
+    """Parse the API response into structured data"""
+    
+    # Try direct JSON parsing first
+    try:
+        data = json.loads(content)
+        if "founders" in data:
+            logger.info(f"Successfully parsed JSON with {len(data.get('founders', []))} founders")
+            return process_founders(data)
+    except json.JSONDecodeError:
+        logger.info("Direct JSON parsing failed, trying to clean content...")
+    
+    # Clean and try again
+    cleaned_content = clean_json_content(content)
+    try:
+        data = json.loads(cleaned_content)
+        if "founders" in data:
+            logger.info(f"Successfully parsed cleaned JSON with {len(data.get('founders', []))} founders")
+            return process_founders(data)
+    except json.JSONDecodeError:
+        logger.info("Cleaned JSON parsing failed, trying extraction...")
+    
+    # Try to extract JSON from text
+    json_pattern = r'\{[\s\S]*"founders"[\s\S]*\}'
+    match = re.search(json_pattern, cleaned_content, re.DOTALL)
+    
+    if match:
+        try:
+            json_str = clean_json_content(match.group(0))
+            data = json.loads(json_str)
+            if "founders" in data:
+                logger.info(f"Successfully extracted and parsed JSON with {len(data.get('founders', []))} founders")
+                return process_founders(data)
+        except json.JSONDecodeError as e:
+            logger.error(f"Extracted JSON parsing failed: {str(e)}")
+    
+    logger.error("Could not parse JSON from response")
+    logger.info("Raw content:")
+    logger.info(content)
+    return [], None
+
+def process_founders(data: Dict[str, Any]) -> Tuple[List[FounderInfo], Optional[str]]:
+    """Process founder data into FounderInfo objects"""
+    founders = []
+    
+    for founder_data in data.get("founders", []):
+        try:
+            # Create FounderInfo object
+            founder = FounderInfo(
+                name=founder_data.get("name", "Not publicly listed"),
+                title=founder_data.get("title", "Not publicly listed"),
+                education=founder_data.get("education"),
+                work_experience=founder_data.get("work_experience"),
+                achievements=founder_data.get("achievements"),
+                previous_startups=founder_data.get("previous_startups"),
+                expertise=founder_data.get("expertise"),
+                age=founder_data.get("age", "Not publicly listed"),
+                location=founder_data.get("location", "Not publicly listed"),
+                social_profiles=founder_data.get("social_profiles")
+            )
+            founders.append(founder)
+            logger.info(f"Processed founder: {founder.name}")
+            
+        except Exception as e:
+            logger.error(f"Error processing founder: {str(e)}")
+            continue
+    
+    founding_story = data.get("founding_story")
+    return founders, founding_story
 
 async def fetch_founder_information(url: str) -> Tuple[List[FounderInfo], Optional[str]]:
     """
@@ -51,7 +139,7 @@ async def fetch_founder_information(url: str) -> Tuple[List[FounderInfo], Option
             logger.warning("PERPLEXITY_API_KEY not found in environment variables")
             return [], None
         
-        # Format the prompt for Perplexity
+        # Updated prompt based on working version
         prompt = f"""Find comprehensive founder information for the startup at {url}. For each founder, provide:
 
 1. Full name and current title/role
@@ -67,9 +155,9 @@ async def fetch_founder_information(url: str) -> Tuple[List[FounderInfo], Option
 Also include:
 - How the founders met or came together
 
-Please search for LinkedIn profiles, company press releases, accelerator profiles, and any biographical information available online.
+IMPORTANT: For any information that is not publicly available or cannot be found, use "Not available" as the value. Do not leave fields empty or null.
 
-Format your response as a JSON object with the following structure:
+Format your response as a valid JSON object with the following structure:
 {{
     "founders": [
         {{
@@ -78,7 +166,7 @@ Format your response as a JSON object with the following structure:
             "education": [
                 {{
                     "institution": "University Name",
-                    "degree": "Degree Name",
+                    "degree": "Degree Type",
                     "year": "Graduation Year"
                 }}
             ],
@@ -86,7 +174,7 @@ Format your response as a JSON object with the following structure:
                 {{
                     "company": "Company Name",
                     "position": "Position Title",
-                    "duration": "Start Year - End Year"
+                    "duration": "Duration (e.g., 2020-2023)"
                 }}
             ],
             "achievements": ["Achievement 1", "Achievement 2"],
@@ -94,23 +182,24 @@ Format your response as a JSON object with the following structure:
                 {{
                     "name": "Startup Name",
                     "role": "Role",
-                    "outcome": "Outcome (e.g., Acquired, Failed)"
+                    "duration": "Duration"
                 }}
             ],
-            "expertise": ["Area of Expertise 1", "Area of Expertise 2"],
-            "age": "Age (if available)",
+            "expertise": ["Area 1", "Area 2"],
+            "age": "Age or Not publicly listed",
             "location": "City, Country",
             "social_profiles": {{
                 "linkedin": "LinkedIn URL",
-                "twitter": "Twitter/X URL"
+                "twitter": "Twitter URL"
             }}
         }}
     ],
-    "founding_story": "A paragraph describing how the founders met and started the company"
+    "founding_story": "Story of how founders met and started the company"
 }}
-"""
+
+Return only the JSON object, no markdown formatting or explanations."""
         
-        # Call Perplexity API
+        # Call Perplexity API with updated parameters
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 "https://api.perplexity.ai/chat/completions",
@@ -119,11 +208,18 @@ Format your response as a JSON object with the following structure:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "sonar",
+                    "model": "llama-3.1-sonar-small-128k-online",  # Updated model name
                     "messages": [
-                        {"role": "user", "content": prompt}
+                        {
+                            "role": "system",
+                            "content": "You are a research assistant. Return only valid JSON responses with no additional formatting or markdown."
+                        },
+                        {
+                            "role": "user", 
+                            "content": prompt
+                        }
                     ],
-                    "temperature": 0.2,
+                    "temperature": 0.1,  # Lower temperature for more consistent output
                     "max_tokens": 4000
                 }
             )
@@ -134,7 +230,7 @@ Format your response as a JSON object with the following structure:
             
             result = response.json()
             
-            # Only print in debug mode
+            # Debug logging (only if DEBUG is set)
             if os.environ.get("DEBUG", "").lower() == "true":
                 print("\n==== PERPLEXITY API RESPONSE ====")
                 print(f"Status Code: {response.status_code}")
@@ -145,118 +241,22 @@ Format your response as a JSON object with the following structure:
             
             content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             
-            # Log the content for debugging
             logger.info(f"Content length: {len(content)}")
+            logger.info(f"Response received - Content length: {len(content)}")
             
-            # First try to parse the entire response as JSON
-            try:
-                # Some responses might be directly formatted as JSON
-                data = json.loads(content)
-                if "founders" in data:
-                    logger.info(f"Found direct JSON response with {len(data.get('founders', []))} founders")
-                    # Process the data
-                    founders = []
-                    for founder_data in data.get("founders", []):
-                        try:
-                            # Map the fields to match our model
-                            mapped_data = {
-                                "name": founder_data.get("name", ""),
-                                "title": founder_data.get("title"),
-                                "education": founder_data.get("education"),
-                                "work_experience": founder_data.get("work_experience"),
-                                "achievements": founder_data.get("achievements"),
-                                "previous_startups": founder_data.get("previous_startups"),
-                                "expertise": founder_data.get("expertise"),
-                                "location": founder_data.get("location"),
-                                "social_profiles": founder_data.get("social_profiles")
-                            }
-                            
-                            # Convert age to int if possible
-                            age = founder_data.get("age")
-                            if isinstance(age, str):
-                                if age.isdigit():
-                                    mapped_data["age"] = int(age)
-                                else:
-                                    mapped_data["age"] = None
-                            elif isinstance(age, int):
-                                mapped_data["age"] = age
-                            else:
-                                mapped_data["age"] = None
-                                
-                            founders.append(FounderInfo(**mapped_data))
-                            logger.info(f"Successfully parsed founder: {mapped_data['name']}")
-                        except Exception as e:
-                            logger.error(f"Error parsing founder data: {str(e)}")
-                            logger.debug(f"Problematic founder data: {founder_data}")
-                    
-                    founding_story = data.get("founding_story")
-                    logger.info(f"Founding story found: {founding_story is not None}")
-                    return founders, founding_story
-            except json.JSONDecodeError:
-                # If it's not direct JSON, try to extract JSON from the text
-                logger.info("Content is not direct JSON, trying to extract JSON from text")
-                pass
+            # Parse the response using the improved parsing logic
+            founders, founding_story = parse_response(content)
             
-            # Try to extract JSON from the response text
-            # Look for patterns like {"founders":[...]} or { "founders": [...] }
-            json_patterns = [
-                r'\{\s*"founders".*\}\s*\}',  # Standard JSON pattern
-                r'\{[\s\S]*"founders"[\s\S]*\}',  # More flexible pattern
-                r'\{[\s\S]*founders[\s\S]*\}'   # Even more flexible
-            ]
+            # Log summary
+            logger.info(f"Found {len(founders)} founders")
+            for founder in founders:
+                logger.info(f"Founder: {founder.name} - {founder.title}")
             
-            for pattern in json_patterns:
-                json_match = re.search(pattern, content, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(0)
-                    logger.info(f"Found JSON match with pattern: {pattern[:20]}...")
-                    try:
-                        data = json.loads(json_str)
-                        if "founders" in data:
-                            logger.info(f"Successfully parsed JSON with {len(data.get('founders', []))} founders")
-                            
-                            # Convert to FounderInfo objects
-                            founders = []
-                            for founder_data in data.get("founders", []):
-                                try:
-                                    # Map the fields to match our model
-                                    mapped_data = {
-                                        "name": founder_data.get("name", ""),
-                                        "title": founder_data.get("title"),
-                                        "education": founder_data.get("education"),
-                                        "work_experience": founder_data.get("work_experience"),
-                                        "achievements": founder_data.get("achievements"),
-                                        "previous_startups": founder_data.get("previous_startups"),
-                                        "expertise": founder_data.get("expertise"),
-                                        "location": founder_data.get("location"),
-                                        "social_profiles": founder_data.get("social_profiles")
-                                    }
-                                    
-                                    # Convert age to int if possible
-                                    age = founder_data.get("age")
-                                    if isinstance(age, str):
-                                        if age.isdigit():
-                                            mapped_data["age"] = int(age)
-                                        else:
-                                            mapped_data["age"] = None
-                                    elif isinstance(age, int):
-                                        mapped_data["age"] = age
-                                    else:
-                                        mapped_data["age"] = None
-                                        
-                                    founders.append(FounderInfo(**mapped_data))
-                                except Exception as e:
-                                    logger.error(f"Error parsing founder data: {str(e)}")
-                            
-                            founding_story = data.get("founding_story")
-                            return founders, founding_story
-                    except json.JSONDecodeError as e:
-                        logger.error(f"Error decoding JSON from match: {str(e)}")
+            if founding_story:
+                logger.info(f"Found founding story ({len(founding_story)} chars)")
             
-            # If we get here, we couldn't find valid JSON
-            logger.error("Could not find valid JSON in Perplexity response")
+            return founders, founding_story
             
-            return [], None
     except Exception as e:
         logger.error(f"Error fetching founder information: {e}")
         return [], None

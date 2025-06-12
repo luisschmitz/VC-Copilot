@@ -1,40 +1,67 @@
 # VC Copilot
 
-An AI-powered tool for analyzing startup websites and providing insights for venture capital decision-making.
+An AI-powered tool for analyzing startup websites and providing comprehensive insights for venture capital decision-making.
 
 ## Features
 
-- Website Scraping: Extract essential data from startup websites
-- Executive Summary: Generate deep dive analysis of the startup
-- Founder Success Prediction: Evaluate founders based on scientific criteria
-- Modern Web Interface: User-friendly dashboard for analysis results
+- **Startup Analysis**
+  - Automated website scraping and data extraction
+  - Smart company information gathering
+  - Modular analysis pipeline
+  - Real-time progress tracking
+
+- **Founder Intelligence**
+  - Scientific criteria-based founder evaluation
+  - Experience and track record analysis
+  - Team composition assessment
+  - Leadership potential scoring
+
+- **Funding Research**
+  - Funding history tracking
+  - Investment round analysis
+  - Key investor identification
+  - Recent funding news aggregation
+
+- **Deep Dive Reports**
+  - Comprehensive startup evaluation
+  - Market positioning analysis
+  - Growth potential assessment
+  - Executive summaries
 
 ## Tech Stack
 
 ### Backend
-- FastAPI (Python) with simplified endpoints
-- OpenAI API for executive summary and founder evaluation
-- Web scraping with BeautifulSoup and Playwright
+- FastAPI (Python 3.9+)
+- OpenAI API integration
+- BeautifulSoup and Playwright for web scraping
+- Modular analysis pipelines
+- Jupyter notebooks for testing
 
 ### Frontend
-- Next.js with TypeScript
-- Tailwind CSS for styling
+- Next.js 13+ with TypeScript
+- Tailwind CSS for modern UI
 - Zustand for state management
-- React components for UI
+- Component-based architecture
+- Progressive loading UI
 
 ### Architecture
-- Modular design with core components:
-  - Website scraper module
-  - Deep dive analysis module
-  - Founder success prediction module
-- Simplified API with a single `/analyze` endpoint
-- Responsive UI with dashboard for viewing results
+- **Modular Design**
+  - Independent analysis modules
+  - Flexible data collection pipeline
+  - Reusable UI components
+  - Type-safe API integration
+
+- **Core Features**
+  - Real-time analysis progress
+  - Comprehensive error handling
+  - Responsive single-page design
+  - Intuitive user experience
 
 ## Getting Started
 
 ### Prerequisites
 - Python 3.9+
-- Node.js 18+ and npm/yarn
+- Node.js 18+ and npm
 - OpenAI API key
 
 ### Installation
@@ -45,78 +72,83 @@ git clone https://github.com/luisschmitz/VC-Copilot.git
 cd VC-Copilot
 ```
 
-2. Set up the backend
-```bash
-# Create and activate a virtual environment (optional but recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install backend dependencies
-pip install -r requirements.txt
-
-# Set up environment variables
-cd backend
-cp .env.example .env  # If .env.example exists, otherwise create a new .env file
-# Edit .env and add your OpenAI API key
-cd ..
-```
-
-3. Set up the frontend
+2. Install frontend dependencies
 ```bash
 cd frontend
 npm install
-# or if you use yarn
-# yarn install
 ```
 
-4. Run the application
+3. Set up the backend
 ```bash
-# In one terminal, start the backend server
+cd ../backend
+python -m venv venv
+source venv/bin/activate  # On Windows use: .\venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+4. Configure environment variables
+```bash
+# In backend/.env
+OPENAI_API_KEY=your_api_key_here
+
+# In frontend/.env.local
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+5. Start the development servers
+
+Backend:
+```bash
+# From the backend directory
 python run_backend.py
-
-# In another terminal, start the frontend development server
-python run_frontend.py
-# or directly with npm
-# cd frontend && npm run dev
 ```
 
-5. Access the application
-   - Backend API: http://localhost:8000
-   - Frontend: http://localhost:3000
-
-## API Usage
-
-### Analyze Endpoint
-```
-POST /analyze
+Frontend:
+```bash
+# From the frontend directory
+npm run dev
 ```
 
-Request body:
-```json
-{
-  "url": "https://example-startup.com"
-}
+The application will be available at `http://localhost:3000`
+
+## Development
+
+### Project Structure
+
+```
+VC-Copilot/
+├── backend/
+│   ├── analysis.py      # Core analysis logic
+│   ├── founder_info.py  # Founder evaluation
+│   ├── funding_news.py  # Funding research
+│   ├── main.py         # FastAPI application
+│   └── scraping.py     # Web scraping
+├── frontend/
+│   ├── src/
+│   │   ├── components/ # Reusable UI components
+│   │   ├── lib/       # Utilities and state
+│   │   └── types/     # TypeScript definitions
+│   └── public/
+└── README.md
 ```
 
-Response:
-```json
-{
-  "company_name": "Example Startup",
-  "executive_summary": "...",
-  "key_insights": ["...", "..."],
-  "key_risks": ["...", "..."],
-  "success_prediction": "High",
-  "overall_assessment": "...",
-  "evaluation_criteria": {...}
-}
-```
+### Testing
 
-## Testing
+The project includes a comprehensive Jupyter notebook (`vc_copilot_test.ipynb`) for testing all major features:
+- Website scraping
+- SWOT analysis
+- Deep dive reports
+- Founder evaluation
+- Funding analysis
 
-### Interactive Testing
-Use the provided Jupyter notebook to test the functionality:
-- `vc_copilot_test.ipynb`: Tests the backend API functionality
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the LICENSE file for details.

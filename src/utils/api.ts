@@ -1,5 +1,11 @@
 import axios from 'axios';
-import { AnalysisResult, PaginatedResponse, SearchParams } from './analysisTypes';
+import { 
+  AnalysisResult, 
+  PaginatedResponse, 
+  SearchParams, 
+  ScrapedData,
+  AnalysisResponse
+} from '@/types/api';
 
 // Create axios instance with default config
 const api = axios.create({
@@ -9,7 +15,25 @@ const api = axios.create({
   },
 });
 
-// Analysis API functions
+// Data collection functions
+export const scrapeWebsite = async (url: string): Promise<ScrapedData> => {
+  const response = await api.post('/scrape', { url });
+  return response.data;
+};
+
+// Analysis functions
+export const analyzeScrapedData = async (
+  scrapedData: ScrapedData,
+  analysisTypes: string[]
+): Promise<AnalysisResponse> => {
+  const response = await api.post('/analyze', {
+    scraped_data: scrapedData,
+    analysis_types: analysisTypes,
+  });
+  return response.data;
+};
+
+// Legacy analysis function
 export const analyzeStartup = async (
   url: string, 
   dataSources: string[] = ['website'], 

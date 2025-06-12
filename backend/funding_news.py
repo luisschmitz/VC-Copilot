@@ -57,6 +57,7 @@ async def fetch_funding_news(url: str) -> Tuple[List[FundingRound], List[NewsIte
         Tuple containing a list of FundingRound objects, a list of NewsItem objects,
         and a dictionary with additional funding information
     """
+    logger.info(f"💰 Fetching funding and news for {url}")
     try:
         import httpx
         
@@ -242,6 +243,15 @@ Format your response as a JSON object with the following structure:
                             "notable_investors": data.get("notable_investors"),
                             "last_funding_date": data.get("last_funding_date")
                         }
+                        
+                        # Log found data
+                        logger.info(f"Found {len(funding_rounds)} funding rounds and {len(news_items)} news items")
+                        if funding_rounds:
+                            logger.info("Preview of latest funding round:")
+                            preview = {k: v for k, v in funding_rounds[0].dict().items() if v is not None}
+                            logger.info(json.dumps(preview, indent=2))
+                        if additional_info:
+                            logger.info(f"Additional funding info: {json.dumps(additional_info, indent=2)}")
                         
                         return funding_rounds, news_items, additional_info
                     except json.JSONDecodeError as e:

@@ -30,7 +30,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 class AnalysisRequest(BaseModel):
     url: str  # Changed from HttpUrl to str to avoid import issues
     analysis_types: List[str] = ["executive_summary", "success_prediction"]
-    scrape_depth: str = "standard"
+    max_pages: int = 5  # Default to 5 pages
     scrape_pages: Optional[List[str]] = None
     additional_sources: Optional[List[str]] = None
 
@@ -221,15 +221,73 @@ async def run_deep_dive_analysis(scraped_data: dict, founder_data: dict = None, 
     logger.info(f"Analysis data prepared - Has funding info: {bool(analysis_data['funding'])}")
     
     # Build the user prompt with the JSON data
+
     user_prompt = (
-        "Analyze this startup and provide insights in these sections:\n"
-        "**Executive Summary**, **Key Insights**, **Key Risks**, **Team Info**, "
-        "**Problem & Market**, **Solution & Product**, **Competition**, **Business Model**, "
-        "**Traction**, **Funding and Investors**, **Conclusion**\n\n"
-        f"Data: {json.dumps(analysis_data, default=str)}\n\n"
-        f"Raw Website Content: {scraped_data.get('raw_text', '')[:3000]}"
+        f"Can you compile a deep dive analysis on this startup based primarily on their website content? "
+        f"I'm providing both scraped website data (which should be treated as the primary source of truth) "
+        f"and supplementary external data for context.\n\n"
+        
+        f"PRIMARY ANALYSIS FOCUS:\n"
+        f"Base your analysis primarily on the raw website content provided, as this represents the company's "
+        f"own messaging, positioning, and current state. Use the external data points only to supplement "
+        f"or validate findings from the website.\n\n"
+        
+        f"CRITICAL FORMATTING REQUIREMENTS:\n"
+        f"• Use EXACTLY this header format for each section: **Section Name**\n"
+        f"• Each section header must be on its own line\n"
+        f"• Leave a blank line after each header before the content\n"
+        f"• If insufficient information exists for any section, write: 'Not enough information provided to analyze this area thoroughly.'\n"
+        f"• Do NOT skip sections - include all 11 sections even if information is limited\n\n"
+        
+        f"REQUIRED REPORT STRUCTURE:\n"
+        f"You must include EXACTLY these 11 sections in this order. Do not add, remove, or rename any sections:\n\n"
+        
+        f"**Executive Summary**\n"
+        f"High-level overview and key takeaways. Company background, history, how it got started, initial product-market fit, and evolution. If limited information, provide what you can determine.\n\n"
+        
+        f"**Key Insights**\n"
+        f"Most important discoveries and strategic observations. Focus on unique differentiators, AI integration, expansion plans, and strategic positioning. Include any unique aspects you can identify.\n\n"
+        
+        f"**Key Risks**\n"
+        f"Primary threats and challenges they face and how they're addressing them. Include both obvious market risks and subtle operational/competitive risks you can identify.\n\n"
+        
+        f"**Team Info**\n"
+        f"Founder backgrounds, current leadership structure, and organizational insights. Include how founders met, their experience, and team composition. If founder info is limited, state this clearly.\n\n"
+        
+        f"**Problem & Market**\n"
+        f"Market opportunity and problem being solved. Target roles, verticals, industries, functions they serve, and their Ideal Customer Profile (ICP). Extract from company messaging if available.\n\n"
+        
+        f"**Solution & Product**\n"
+        f"What they offer, product offerings, value proposition, and who their target users are. Focus on what the company says about their solution and how it addresses customer needs.\n\n"
+        
+        f"**Competition**\n"
+        f"Main competitors, competitive positioning, and differentiation. Analyze how they compare in the competitive landscape and position against competitors.\n\n"
+        
+        f"**Business Model**\n"
+        f"How they make money, revenue model, go-to-market strategy, pricing, customer acquisition details, and any insights on contract values or monetization approach.\n\n"
+        
+        f"**Traction**\n"
+        f"Growth metrics, customer counts, notable clients, revenue indicators, KPIs, user retention, engagement metrics, and market validation. Include any traction data or customer mentions.\n\n"
+        
+        f"**Funding and Investors**\n"
+        f"Financial backing, investment history, funding rounds, headcount growth, expansion plans, and IPO prospects. Include any funding announcements or investor mentions.\n\n"
+        
+        f"**Conclusion**\n"
+        f"Future outlook, final assessment, and user sentiment. What customers think, what makes the product sticky, and synthesize your overall view of the company's prospects.\n\n"
+        
+        f"CONTENT GUIDELINES:\n"
+        f"• If you cannot find adequate information for a section, write concisely: 'Not enough information provided.'\n"
+        f"• Be purely objective, do not include any personal opinions or biases and rather report only the facts.\n"
+        f"• Be specific and cite details from the website when possible\n"
+        f"• Each section should provide all the facts when information is available\n\n"
+        
+        f"DATA SOURCES (prioritize in this order):\n"
+        f"1. Raw Website Content (PRIMARY SOURCE): {scraped_data.get('raw_text', '')[:3000]}\n\n"
+        f"2. External Data Context (SUPPLEMENTARY): {json.dumps(analysis_data, default=str)}\n\n"
+        
+        f"Remember: Use the exact header format **Section Name** and include all 11 sections even if some lack sufficient information."
     )
-    
+
     # Debug logging for API call
     logger.info("Preparing to call OpenAI API for deep dive analysis")
     
@@ -240,7 +298,7 @@ async def run_deep_dive_analysis(scraped_data: dict, founder_data: dict = None, 
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.7
+            temperature=0.5
         )
         
         deep_dive_text = response.choices[0].message.content

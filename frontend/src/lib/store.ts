@@ -1,55 +1,77 @@
 import { create } from 'zustand';
-import { AnalysisResponse, ScrapedData } from '@/types/api';
+import { AnalysisResponse, ScrapedData, FounderResponse, FundingNewsResponse } from '@/types/api';
+import { apiService } from './api';
 
-interface AppState {
-  // Analysis state
-  isAnalyzing: boolean;
-  analysisResults: AnalysisResponse | null;
-  analysisError: string | null;
+// Define the step types for our analysis flow
+export type AnalysisStep = 'idle' | 'analyzing' | 'complete';
+
+interface VCCopilotState {
+  // Input
+  url: string;
   
-  // Scraping state
-  isScraping: boolean;
-  scrapedData: ScrapedData | null;
-  scrapingError: string | null;
+  // Flow control
+  currentStep: AnalysisStep;
+  isLoading: boolean;
+  error: string | null;
   
-  // UI state
-  activeTab: string;
+  // Data
+  analysisData: AnalysisResponse | null;
   
   // Actions
-  setIsAnalyzing: (isAnalyzing: boolean) => void;
-  setAnalysisResults: (results: AnalysisResponse | null) => void;
-  setAnalysisError: (error: string | null) => void;
-  setIsScraping: (isScraping: boolean) => void;
-  setScrapedData: (data: ScrapedData | null) => void;
-  setScrapingError: (error: string | null) => void;
-  setActiveTab: (tab: string) => void;
-  resetState: () => void;
+  setUrl: (url: string) => void;
+  analyzeStartup: (url: string) => Promise<void>;
+  reset: () => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useVCCopilotStore = create<VCCopilotState>((set) => ({
   // Initial state
-  isAnalyzing: false,
-  analysisResults: null,
-  analysisError: null,
-  isScraping: false,
-  scrapedData: null,
-  scrapingError: null,
-  activeTab: 'analysis',
+  url: '',
+  currentStep: 'idle',
+  isLoading: false,
+  error: null,
+  analysisData: null,
   
   // Actions
-  setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
-  setAnalysisResults: (results) => set({ analysisResults: results }),
-  setAnalysisError: (error) => set({ analysisError: error }),
-  setIsScraping: (isScraping) => set({ isScraping }),
-  setScrapedData: (data) => set({ scrapedData: data }),
-  setScrapingError: (error) => set({ scrapingError: error }),
-  setActiveTab: (tab) => set({ activeTab: tab }),
-  resetState: () => set({
-    isAnalyzing: false,
-    analysisResults: null,
-    analysisError: null,
-    isScraping: false,
-    scrapedData: null,
-    scrapingError: null,
-  }),
+  setUrl: (url) => set({ url }),
+  
+  analyzeStartup: async (url) => {
+    try {
+      // Reset any previous data and errors
+      set({ 
+        url, 
+        error: null,
+        isLoading: true,
+        currentStep: 'analyzing',
+        analysisData: null
+      });
+
+      // Call the analyze endpoint with all data sources and analysis types
+      const analysisData = await apiService.analyzeStartup({
+        url,
+        data_sources: ['website', 'founders', 'funding_news'],
+        analysis_types: ['deep_dive', 'founder_evaluation']
+      });
+      
+      // Complete the process
+      set({ 
+        analysisData, 
+        currentStep: 'complete',
+        isLoading: false
+      });
+    } catch (error) {
+      console.error('Error in analysis process:', error);
+      set({ 
+        error: error instanceof Error ? error.message : 'An unknown error occurred',
+        isLoading: false
+      });
+    }
+  },
+  
+  reset: () => set({
+    url: '',
+    currentStep: 'idle',
+    isLoading: false,
+    error: null,
+    analysisData: null
+  })
 }));

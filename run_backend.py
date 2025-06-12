@@ -16,7 +16,7 @@ import argparse
 from dotenv import load_dotenv
 
 # Default port for the backend server
-DEFAULT_PORT = 8001
+DEFAULT_PORT = 8000
 
 def load_environment():
     """Load environment variables from backend/.env file"""

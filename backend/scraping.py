@@ -1,7 +1,7 @@
 import re
 import requests
 import logging
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 from urllib.parse import urlparse, urljoin, urlunparse
 from typing import Optional, Dict, Any, List, Set, Tuple
 from pydantic import BaseModel
@@ -17,103 +17,396 @@ class ScrapedData(BaseModel):
     team_info: Optional[List[Dict[str, str]]] = None
     social_links: Optional[Dict[str, str]] = None
     about_page: Optional[str] = None
-    contact_info: Optional[Dict[str, str]] = None
+    contact_info: Optional[Dict[str, List[str]]] = None
     products_services: Optional[List[Dict[str, str]]] = None
     news_data: Optional[List[Dict[str, str]]] = None
     pages_scraped: Optional[List[Dict[str, Any]]] = None
     total_pages_found: Optional[int] = None
 
-class SmartPageClassifier:
-    """Classifies pages based on URL patterns, content, and link text"""
+class EnhancedTextExtractor:
+    """Enhanced text extraction with comprehensive noise removal"""
     
     def __init__(self):
+        logger.debug("Initializing EnhancedTextExtractor")
+        
+        # Expanded noise patterns for better cleaning
+        self.noise_patterns = {
+            'navigation': [
+                r'(menu|nav|navigation|breadcrumb|sidebar|footer|header)\s*:?\s*',
+                r'(skip to|jump to|go to)\s+(content|main|navigation)',
+                r'(toggle|open|close|show|hide)\s+(menu|navigation)',
+                r'(home|back to top|scroll to top)',
+                r'(previous|next|page \d+|\d+ of \d+)',
+                r'(sort by|filter by|view all|show more|load more)',
+                r'(search|submit|reset|cancel|ok|yes|no)\s*(button)?'
+            ],
+            'privacy': [
+                r'(cookie|privacy|gdpr|ccpa)\s*(policy|notice|consent|banner)',
+                r'(accept|decline|manage|customize)\s*(cookies|privacy|preferences)',
+                r'(we use cookies|this site uses|by continuing)',
+                r'(privacy policy|terms of service|legal notice)',
+                r'(your privacy|data protection|cookie settings)'
+            ],
+            'social': [
+                r'(follow us|connect with us|find us)\s*on',
+                r'(share|like|tweet|post)\s*(this|on|via)',
+                r'(facebook|twitter|linkedin|instagram|youtube|tiktok)\s*(page|profile)?',
+                r'(social media|social networks)',
+                r'(subscribe|newsletter|email updates)'
+            ],
+            'ads': [
+                r'(advertisement|sponsored|promoted|ad\s)',
+                r'(buy now|shop now|order now|get started|sign up)',
+                r'(free trial|limited time|special offer|discount)',
+                r'(click here|learn more|read more|find out)',
+                r'(call now|contact today|get quote)',
+                r'(\$\d+|\d+% off|save \$)',
+                r'(testimonial|review|rating|stars)'
+            ],
+            'forms': [
+                r'(enter|type|select|choose|pick)\s*(your|a|an)',
+                r'(required|optional|please|must)\s*(field|enter|provide)',
+                r'(email|password|username|phone|address)\s*(field)?',
+                r'(checkbox|radio|dropdown|select|input)',
+                r'(validation|error|success|warning)\s*(message)?'
+            ],
+            'technical': [
+                r'(loading|please wait|processing)',
+                r'(javascript|css|browser|compatibility)',
+                r'(404|error|not found|page not found)',
+                r'(copyright|all rights reserved|\(c\)\s*\d{4})',
+                r'(version|update|upgrade|download)',
+                r'(api|sdk|documentation|docs)'
+            ]
+        }
+        
+        # Elements to completely remove
+        self.remove_selectors = [
+            'nav', 'navbar', '.navbar', '#navbar', '.nav', '#nav',
+            '.navigation', '#navigation', '.menu', '#menu',
+            '.breadcrumb', '.breadcrumbs', '.sidebar', '.aside',
+            'header', 'footer', '.header', '.footer', '#header', '#footer',
+            '.site-header', '.site-footer', '.page-header', '.page-footer',
+            '.ad', '.ads', '.advertisement', '.banner', '.promo',
+            '.marketing', '.cta', '.call-to-action', '.popup', '.modal',
+            '.overlay', '.lightbox', '[class*="ad-"]', '[id*="ad-"]',
+            '.social', '.share', '.sharing', '.follow', '.subscribe',
+            '.newsletter', '.social-media', '.social-links',
+            '.comments', '.comment', '.review', '.reviews', '.rating',
+            '.testimonial', '.testimonials', '.feedback',
+            '.search', '.search-form', '#search', '.login', '.signup',
+            '.registration', '.newsletter-signup',
+            'script', 'style', 'noscript', '.hidden', '.invisible',
+            '[style*="display:none"]', '[style*="visibility:hidden"]',
+            '.cookie', '.privacy', '.gdpr', '.consent', '.notice',
+            '.meta', '.metadata', '.tags', '.categories', '.author-info',
+            '.publish-date', '.last-updated'
+        ]
+        
+        # Content-rich elements to prioritize
+        self.content_selectors = [
+            'main', '[role="main"]', '.main', '#main',
+            '.content', '#content', '.page-content', '.main-content',
+            'article', '.article', '.post', '.entry',
+            '.description', '.summary', '.intro', '.overview',
+            '.about', '.company-info', '.product-info'
+        ]
+
+    def remove_noise_elements(self, soup: BeautifulSoup) -> BeautifulSoup:
+        """Remove noise elements from the soup"""
+        logger.debug("Removing noise elements from HTML")
+        
+        # Remove comments
+        comments_removed = 0
+        for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+            comment.extract()
+            comments_removed += 1
+        logger.debug(f"Removed {comments_removed} HTML comments")
+        
+        # Remove script, style, meta, link tags
+        technical_tags_removed = 0
+        for tag in soup(['script', 'style', 'meta', 'link']):
+            tag.decompose()
+            technical_tags_removed += 1
+        logger.debug(f"Removed {technical_tags_removed} technical tags")
+        
+        # Remove elements by selector
+        elements_removed = 0
+        for selector in self.remove_selectors:
+            try:
+                for element in soup.select(selector):
+                    element.decompose()
+                    elements_removed += 1
+            except Exception as e:
+                logger.warning(f"Error removing selector {selector}: {str(e)}")
+                continue
+        logger.debug(f"Removed {elements_removed} noise elements by selector")
+        
+        # Remove elements with noise-indicating attributes
+        attr_elements_removed = 0
+        noise_attributes = [
+            ('class', ['ad', 'ads', 'advertisement', 'banner', 'popup', 'modal',
+                      'cookie', 'privacy', 'gdpr', 'social', 'share', 'nav',
+                      'menu', 'header', 'footer', 'sidebar']),
+            ('id', ['ad', 'ads', 'banner', 'popup', 'cookie', 'privacy',
+                   'nav', 'menu', 'header', 'footer']),
+            ('role', ['banner', 'navigation', 'contentinfo', 'complementary'])
+        ]
+        
+        for attr, keywords in noise_attributes:
+            try:
+                elements_to_remove = []
+                for element in soup.find_all(attrs={attr: True}):
+                    try:
+                        if element is None:
+                            continue
+                            
+                        attr_value = element.get(attr, '')
+                        if attr_value is None:
+                            continue
+                            
+                        if isinstance(attr_value, list):
+                            attr_value = ' '.join(str(v) for v in attr_value if v is not None)
+                        
+                        attr_value = str(attr_value).lower()
+                        
+                        if any(keyword in attr_value for keyword in keywords):
+                            elements_to_remove.append(element)
+                            
+                    except Exception as e:
+                        logger.debug(f"Error processing individual element for {attr}: {str(e)}")
+                        continue
+                
+                # Remove elements outside the iteration
+                for element in elements_to_remove:
+                    try:
+                        element.decompose()
+                        attr_elements_removed += 1
+                    except Exception as e:
+                        logger.debug(f"Error removing element: {str(e)}")
+                        continue
+                        
+            except Exception as e:
+                logger.warning(f"Error processing attribute {attr}: {str(e)}")
+                continue
+        
+        logger.debug(f"Removed {attr_elements_removed} elements by noise attributes")
+        return soup
+
+    def extract_main_content(self, soup: BeautifulSoup) -> str:
+        """Extract main content with priority to content-rich elements"""
+        logger.debug("Extracting main content from cleaned HTML")
+        
+        content_texts = []
+        main_content = None
+        
+        # Try to find main content area first
+        for selector in self.content_selectors:
+            try:
+                main_content = soup.select_one(selector)
+                if main_content:
+                    logger.debug(f"Found main content using selector: {selector}")
+                    break
+            except Exception as e:
+                logger.warning(f"Error with content selector {selector}: {str(e)}")
+                continue
+        
+        if main_content:
+            content_texts.append(self.extract_clean_text(main_content))
+        else:
+            logger.debug("No main content area found, extracting from body")
+            body = soup.find('body')
+            if body:
+                content_texts.append(self.extract_clean_text(body))
+            else:
+                logger.debug("No body found, extracting from entire soup")
+                content_texts.append(self.extract_clean_text(soup))
+        
+        final_text = '\n\n'.join(filter(None, content_texts))
+        logger.debug(f"Extracted {len(final_text)} characters of main content")
+        return final_text
+
+    def extract_clean_text(self, element) -> str:
+        """Extract and clean text from an element"""
+        if not element:
+            return ""
+        
+        text = element.get_text(separator='\n', strip=True)
+        return self.clean_text_content(text)
+
+    def clean_text_content(self, text: str) -> str:
+        """Clean text content by removing noise patterns"""
+        if not text:
+            return ""
+        
+        original_length = len(text)
+        
+        # Normalize whitespace
+        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r'\n\s*\n', '\n\n', text)
+        
+        # Remove noise patterns
+        patterns_removed = 0
+        for category, patterns in self.noise_patterns.items():
+            for pattern in patterns:
+                before_length = len(text)
+                text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+                if len(text) < before_length:
+                    patterns_removed += 1
+        
+        # Remove common UI text patterns
+        ui_removals = [
+            r'^(home|menu|navigation|search|close|open)\s*$',
+            r'^(skip to|jump to)\s+\w+\s*$',
+            r'^(page \d+ of \d+|previous|next)\s*$',
+            r'^(loading|please wait)\s*\.{0,3}\s*$',
+            r'^(required field|please enter|must be)\s*\.{0,3}\s*$',
+            r'^[\*\+\-\•]\s*$',
+            r'^\d+\s*$',
+            r'^[^\w\s]*$',
+        ]
+        
+        lines = text.split('\n')
+        cleaned_lines = []
+        lines_removed = 0
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            skip_line = False
+            for pattern in ui_removals:
+                if re.match(pattern, line, re.IGNORECASE):
+                    skip_line = True
+                    lines_removed += 1
+                    break
+            
+            if not skip_line and len(line) > 2:
+                cleaned_lines.append(line)
+        
+        # Join lines and normalize spacing
+        text = '\n'.join(cleaned_lines)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r'[ \t]+', ' ', text)
+        
+        final_length = len(text)
+        logger.debug(f"Text cleaning: {original_length} -> {final_length} chars, "
+                    f"removed {patterns_removed} noise patterns, {lines_removed} UI lines")
+        
+        return text.strip()
+
+class SmartPageClassifier:
+    """Enhanced page classifier with better patterns"""
+    
+    def __init__(self):
+        logger.debug("Initializing SmartPageClassifier")
+        
         self.page_keywords = {
             'about': {
                 'url_patterns': [
                     r'/about', r'/about-us', r'/about-company', r'/our-story', 
                     r'/who-we-are', r'/mission', r'/vision', r'/values', 
-                    r'/company', r'/overview', r'/history'
+                    r'/company', r'/overview', r'/history', r'/story',
+                    r'/why-us', r'/our-mission', r'/our-vision'
                 ],
                 'link_text': [
                     'about', 'about us', 'about company', 'our story', 
-                    'who we are', 'mission', 'vision', 'company', 'overview'
+                    'who we are', 'mission', 'vision', 'company', 'overview',
+                    'story', 'history', 'background', 'why us', 'our mission'
                 ],
                 'content_indicators': [
                     'founded', 'established', 'our mission', 'our vision', 
-                    'company history', 'who we are', 'what we do'
+                    'company history', 'who we are', 'what we do', 'our story',
+                    'why we exist', 'our purpose'
                 ]
             },
             'products': {
                 'url_patterns': [
-                    r'/products', r'/services', r'/solutions', r'/offerings', 
-                    r'/platform', r'/technology', r'/features', r'/what-we-do',
-                    r'/portfolio', r'/catalog'
+                    r'/products', r'/product', r'/services', r'/service', r'/solutions', r'/solution',
+                    r'/offerings', r'/platform', r'/technology', r'/features', r'/what-we-do',
+                    r'/portfolio', r'/catalog', r'/tools', r'/capabilities', r'/how-it-works',
+                    r'/pricing', r'/plans'
                 ],
                 'link_text': [
-                    'products', 'services', 'solutions', 'offerings', 
-                    'platform', 'technology', 'features', 'what we do',
-                    'portfolio', 'catalog'
+                    'products', 'product', 'services', 'service', 'solutions', 'solution',
+                    'offerings', 'platform', 'technology', 'features', 'what we do',
+                    'portfolio', 'catalog', 'tools', 'capabilities', 'how it works',
+                    'pricing', 'plans', 'get started'
                 ],
                 'content_indicators': [
                     'our products', 'our services', 'what we offer', 
-                    'solutions', 'features', 'capabilities'
+                    'solutions', 'features', 'capabilities', 'platform',
+                    'how it works', 'pricing', 'plans'
                 ]
             },
             'team': {
                 'url_patterns': [
                     r'/team', r'/our-team', r'/leadership', r'/management', 
                     r'/founders', r'/people', r'/board', r'/executives',
-                    r'/staff', r'/directors'
+                    r'/staff', r'/directors', r'/advisors', r'/meet-the-team',
+                    r'/our-people', r'/who-we-are'
                 ],
                 'link_text': [
                     'team', 'our team', 'leadership', 'management', 
-                    'founders', 'people', 'board', 'executives', 'staff'
+                    'founders', 'people', 'board', 'executives', 'staff',
+                    'advisors', 'directors', 'meet the team', 'our people',
+                    'who we are'
                 ],
                 'content_indicators': [
                     'our team', 'leadership team', 'founders', 'executives',
-                    'management', 'board of directors'
+                    'management', 'board of directors', 'meet the team',
+                    'our people', 'who we are'
                 ]
             },
             'contact': {
                 'url_patterns': [
                     r'/contact', r'/contact-us', r'/get-in-touch', r'/reach-us', 
-                    r'/locations', r'/offices', r'/support', r'/help'
+                    r'/locations', r'/offices', r'/support', r'/help', r'/reach-out',
+                    r'/talk-to-us', r'/schedule', r'/demo', r'/book'
                 ],
                 'link_text': [
                     'contact', 'contact us', 'get in touch', 'reach us', 
-                    'locations', 'offices', 'support', 'help'
+                    'locations', 'offices', 'support', 'help', 'reach out',
+                    'talk to us', 'schedule', 'demo', 'book', 'get started'
                 ],
                 'content_indicators': [
                     'contact us', 'get in touch', 'phone', 'email', 
-                    'address', 'location', 'office'
+                    'address', 'location', 'office', 'reach out',
+                    'schedule', 'demo', 'book'
                 ]
             },
             'news': {
                 'url_patterns': [
                     r'/news', r'/blog', r'/press', r'/media', r'/updates', 
-                    r'/insights', r'/resources', r'/articles', r'/announcements'
+                    r'/insights', r'/resources', r'/articles', r'/announcements',
+                    r'/content', r'/knowledge', r'/learn'
                 ],
                 'link_text': [
                     'news', 'blog', 'press', 'media', 'updates', 
-                    'insights', 'resources', 'articles'
+                    'insights', 'resources', 'articles', 'announcements',
+                    'content', 'knowledge', 'learn', 'latest'
                 ],
                 'content_indicators': [
                     'latest news', 'blog posts', 'press releases', 
-                    'media coverage', 'announcements'
+                    'media coverage', 'announcements', 'insights',
+                    'resources', 'knowledge'
                 ]
             },
             'careers': {
                 'url_patterns': [
                     r'/careers', r'/jobs', r'/join-us', r'/work-with-us', 
-                    r'/opportunities', r'/positions', r'/hiring'
+                    r'/opportunities', r'/positions', r'/hiring', r'/openings',
+                    r'/jobs-board', r'/employment'
                 ],
                 'link_text': [
                     'careers', 'jobs', 'join us', 'work with us', 
-                    'opportunities', 'hiring'
+                    'opportunities', 'hiring', 'openings', 'employment',
+                    'job board', 'work here'
                 ],
                 'content_indicators': [
                     'join our team', 'career opportunities', 'job openings',
-                    'work with us', 'we are hiring'
+                    'work with us', 'we are hiring', 'employment'
                 ]
             }
         }
@@ -128,39 +421,38 @@ class SmartPageClassifier:
         for page_type, keywords in self.page_keywords.items():
             score = 0
             
-            # Check URL patterns
+            # Check URL patterns (highest weight)
             for pattern in keywords['url_patterns']:
                 if re.search(pattern, url_lower):
-                    score += 3
+                    score += 4
                     break
             
-            # Check link text
+            # Check link text (medium weight)
             for text in keywords['link_text']:
                 if text in link_text_lower:
                     score += 2
                     break
             
-            # Check content indicators (if content provided)
+            # Check content indicators (lower weight)
             if content:
                 for indicator in keywords['content_indicators']:
                     if indicator in content_lower:
                         score += 1
                         break
             
-            if score >= 2:  # Threshold for classification
+            if score >= 2:
                 classifications.append(page_type)
         
+        logger.debug(f"Classified URL {url} as: {classifications}")
         return classifications
 
 def normalize_url(url: str, base_url: str) -> str:
-    """Normalize and resolve URLs"""
+    """Normalize and resolve URLs with better deduplication"""
     if not url:
         return ""
     
-    # Remove fragments and normalize
     url = url.split('#')[0].strip()
     
-    # Handle relative URLs
     if url.startswith('/'):
         normalized = urljoin(base_url, url)
     elif not url.startswith(('http://', 'https://')):
@@ -168,11 +460,45 @@ def normalize_url(url: str, base_url: str) -> str:
     else:
         normalized = url
     
-    # Remove trailing slash for consistency (except for root)
-    if normalized.endswith('/') and len(normalized.split('/')) > 3:
-        normalized = normalized[:-1]
+    # More aggressive trailing slash normalization
+    # Always remove trailing slash except for root domain
+    parsed = urlparse(normalized)
+    if parsed.path and parsed.path != '/' and parsed.path.endswith('/'):
+        normalized = normalized.rstrip('/')
     
     return normalized
+
+def urls_are_equivalent(url1: str, url2: str) -> bool:
+    """Check if two URLs are equivalent (same content)"""
+    # Normalize both URLs
+    parsed1 = urlparse(url1.rstrip('/'))
+    parsed2 = urlparse(url2.rstrip('/'))
+    
+    # Same if domain and path are the same
+    return (parsed1.netloc == parsed2.netloc and 
+            parsed1.path.rstrip('/') == parsed2.path.rstrip('/'))
+
+def deduplicate_urls(urls_with_context: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
+    """Remove duplicate URLs that point to the same content"""
+    seen_urls = set()
+    deduplicated = []
+    
+    for url, context in urls_with_context:
+        # Create a canonical version for comparison
+        parsed = urlparse(url.rstrip('/'))
+        canonical = f"{parsed.netloc}{parsed.path.rstrip('/')}"
+        
+        if canonical not in seen_urls:
+            seen_urls.add(canonical)
+            # Use the cleaner URL (without trailing slash)
+            clean_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
+            if clean_url.endswith('://'):  # Handle edge case for root domain
+                clean_url += parsed.netloc
+            deduplicated.append((clean_url, context))
+        else:
+            logger.debug(f"Skipping duplicate URL: {url}")
+    
+    return deduplicated
 
 def is_same_domain(url1: str, url2: str) -> bool:
     """Check if two URLs are from the same domain"""
@@ -182,29 +508,36 @@ def should_skip_url(url: str) -> bool:
     """Determine if a URL should be skipped"""
     url_lower = url.lower()
     
-    # Skip non-content file extensions
     skip_extensions = ('.pdf', '.doc', '.docx', '.xls', '.xlsx', '.zip', 
                       '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico',
-                      '.css', '.js', '.xml', '.json', '.rss')
+                      '.css', '.js', '.xml', '.json', '.rss', '.txt')
     
-    # Skip common non-content paths
     skip_paths = ('/login', '/signin', '/signup', '/register', '/cart', 
                  '/checkout', '/privacy', '/terms', '/cookie', '/legal',
-                 '/wp-admin', '/admin', '/dashboard', '/account')
+                 '/wp-admin', '/admin', '/dashboard', '/account', '/user',
+                 '/auth', '/oauth', '/api', '/download')
     
-    # Skip external links to common domains
     skip_domains = ('facebook.com', 'twitter.com', 'linkedin.com', 
-                   'instagram.com', 'youtube.com', 'google.com')
+                   'instagram.com', 'youtube.com', 'google.com',
+                   'github.com', 'medium.com', 'reddit.com')
     
-    return (any(ext in url_lower for ext in skip_extensions) or
-            any(path in url_lower for path in skip_paths) or
-            any(domain in url_lower for domain in skip_domains))
+    should_skip = (any(ext in url_lower for ext in skip_extensions) or
+                   any(path in url_lower for path in skip_paths) or
+                   any(domain in url_lower for domain in skip_domains))
+    
+    if should_skip:
+        logger.debug(f"Skipping URL: {url}")
+    
+    return should_skip
 
 def extract_links_with_context(soup: BeautifulSoup, base_url: str) -> List[Tuple[str, str]]:
-    """Extract links with their anchor text context"""
+    """Extract links with their anchor text context - enhanced for modern websites"""
+    logger.debug("Extracting links with context")
+    
     links_with_context = []
     seen_urls = set()
     
+    # Method 1: Traditional <a> tags
     for link in soup.find_all('a', href=True):
         href = link.get('href', '').strip()
         if not href or href.startswith(('mailto:', 'tel:', 'javascript:')):
@@ -214,25 +547,19 @@ def extract_links_with_context(soup: BeautifulSoup, base_url: str) -> List[Tuple
         if not normalized_url or should_skip_url(normalized_url):
             continue
         
-        # Skip if we've already seen this URL
         if normalized_url in seen_urls:
             continue
         
-        # Skip if it's just the base URL or homepage variations
         base_domain = base_url.rstrip('/')
         if normalized_url in [base_domain, base_domain + '/', base_domain + '/index.html', base_domain + '/home']:
             continue
         
         seen_urls.add(normalized_url)
         
-        # Get link text and context
         link_text = link.get_text(strip=True)
-        
-        # Skip empty link text or very short generic text
-        if not link_text or len(link_text) < 2 or link_text.lower() in ['home', 'here', 'click', 'more']:
+        if not link_text or len(link_text) < 2 or link_text.lower() in ['home', 'here', 'click', 'more', '»', '›']:
             continue
         
-        # Also check parent elements for additional context
         parent_text = ""
         parent = link.parent
         while parent and not parent_text and parent.name != 'body':
@@ -242,215 +569,459 @@ def extract_links_with_context(soup: BeautifulSoup, base_url: str) -> List[Tuple
         context = f"{link_text} {parent_text}".strip()
         links_with_context.append((normalized_url, context))
     
+    # Method 2: Look for data attributes that might contain URLs (for SPAs)
+    for element in soup.find_all(attrs={"data-href": True}):
+        href = element.get('data-href', '').strip()
+        if href:
+            normalized_url = normalize_url(href, base_url)
+            if normalized_url and not should_skip_url(normalized_url) and normalized_url not in seen_urls:
+                seen_urls.add(normalized_url)
+                text = element.get_text(strip=True)
+                links_with_context.append((normalized_url, text))
+    
+    # Method 3: Common navigation patterns and text-based discovery
+    common_pages = [
+        ('about', ['about', 'about-us', 'about-company', 'our-story', 'company', 'who-we-are']),
+        ('products', ['products', 'product', 'solutions', 'services', 'platform', 'features']),
+        ('team', ['team', 'our-team', 'leadership', 'founders', 'people', 'management']),
+        ('contact', ['contact', 'contact-us', 'get-in-touch', 'reach-us', 'support']),
+        ('news', ['news', 'blog', 'press', 'media', 'updates', 'insights', 'resources']),
+        ('careers', ['careers', 'jobs', 'join-us', 'work-with-us', 'opportunities'])
+    ]
+    
+    # Method 4: Look for text that suggests navigation but might not be linked properly
+    all_text = soup.get_text().lower()
+    parsed_url = urlparse(base_url)
+    domain = parsed_url.netloc
+    
+    for page_type, variations in common_pages:
+        for variation in variations:
+            # Check if the text appears on the page (suggesting the section exists)
+            if variation in all_text:
+                # Try common URL patterns
+                potential_urls = [
+                    f"{base_url}/{variation}",
+                    f"{base_url}/{variation}/",
+                    f"https://{domain}/{variation}",
+                    f"https://www.{domain}/{variation}" if not domain.startswith('www.') else f"https://{domain[4:]}/{variation}"
+                ]
+                
+                for potential_url in potential_urls:
+                    if potential_url not in seen_urls and not should_skip_url(potential_url):
+                        seen_urls.add(potential_url)
+                        links_with_context.append((potential_url, f"{variation} (discovered from content)"))
+                        logger.debug(f"Discovered potential page: {potential_url}")
+                        break  # Only add one variation per page type
+    
+    # Method 5: Look for navigation menus and buttons that might not be proper links
+    nav_selectors = [
+        'nav', '.nav', '.navigation', '.navbar', '.menu', 
+        '[role="navigation"]', '.header-nav', '.main-nav'
+    ]
+    
+    for selector in nav_selectors:
+        try:
+            nav_elements = soup.select(selector)
+            for nav in nav_elements:
+                # Look for clickable elements within navigation
+                for element in nav.find_all(['button', 'div', 'span', 'li']):
+                    text = element.get_text(strip=True).lower()
+                    if text and len(text) > 2:
+                        for page_type, variations in common_pages:
+                            if text in variations:
+                                potential_url = f"{base_url}/{text}"
+                                if potential_url not in seen_urls and not should_skip_url(potential_url):
+                                    seen_urls.add(potential_url)
+                                    links_with_context.append((potential_url, f"{text} (from navigation)"))
+                                    logger.debug(f"Discovered nav page: {potential_url}")
+        except Exception as e:
+            logger.warning(f"Error processing nav selector {selector}: {str(e)}")
+            continue
+    
+    logger.debug(f"Found {len(links_with_context)} valid internal links")
     return links_with_context
 
 def extract_contact_info(soup, text):
     """Extract contact information from the page"""
+    logger.debug("Extracting contact information")
     contact_info = {}
     
-    # Email extraction (improved pattern)
-    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-    emails = re.findall(email_pattern, text)
-    if emails:
-        # Filter out common false positives
-        valid_emails = [email for email in emails if not any(skip in email.lower() 
-                       for skip in ['@example.com', '@domain.com', '@yoursite.com'])]
-        if valid_emails:
-            contact_info['emails'] = list(set(valid_emails))
+    try:
+        # Email extraction
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        emails = re.findall(email_pattern, text)
+        if emails:
+            valid_emails = [email for email in emails if not any(skip in email.lower() 
+                           for skip in ['@example.com', '@domain.com', '@yoursite.com', '@test.com'])]
+            if valid_emails:
+                contact_info['emails'] = list(set(valid_emails))[:5]
+                logger.debug(f"Found {len(contact_info['emails'])} valid emails")
+    except Exception as e:
+        logger.warning(f"Error extracting emails: {str(e)}")
     
-    # Phone extraction (improved patterns)
-    phone_patterns = [
-        r'(\+?1?[-.\s]?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4})',
-        r'(\+?[0-9]{1,3}[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,9})'
-    ]
+    try:
+        # Phone extraction
+        phone_patterns = [
+            r'(\+?1?[-.\s]?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4})',
+            r'(\+?[0-9]{1,3}[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,4}[-.\s]?[0-9]{1,9})'
+        ]
+        
+        phones = []
+        for pattern in phone_patterns:
+            phones.extend(re.findall(pattern, text))
+        
+        if phones:
+            contact_info['phones'] = list(set(phones))[:3]
+            logger.debug(f"Found {len(contact_info['phones'])} phone numbers")
+    except Exception as e:
+        logger.warning(f"Error extracting phones: {str(e)}")
     
-    phones = []
-    for pattern in phone_patterns:
-        phones.extend(re.findall(pattern, text))
-    
-    if phones:
-        contact_info['phones'] = list(set(phones))
-    
-    # Address extraction (improved)
-    address_patterns = [
-        r'(?i)address[:\s]+([^.]*(?:street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln)[^.]*)',
-        r'(?i)(?:located at|headquarters|office)[:\s]+([^.]*(?:street|st|avenue|ave|road|rd)[^.]*)',
-        r'([0-9]+\s+[A-Za-z\s]+(?:street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln)[^.]*)'
-    ]
-    
-    addresses = []
-    for pattern in address_patterns:
-        matches = re.findall(pattern, text)
-        addresses.extend(matches)
-    
-    if addresses:
-        contact_info['addresses'] = list(set(addresses))
+    try:
+        # Address extraction
+        address_patterns = [
+            r'(?i)address[:\s]+([^.]*(?:street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln)[^.]*)',
+            r'([0-9]+\s+[A-Za-z\s]+(?:street|st|avenue|ave|road|rd|drive|dr|boulevard|blvd|lane|ln)[^.]*)'
+        ]
+        
+        addresses = []
+        for pattern in address_patterns:
+            matches = re.findall(pattern, text)
+            addresses.extend(matches)
+        
+        if addresses:
+            contact_info['addresses'] = list(set(addresses))[:3]
+            logger.debug(f"Found {len(contact_info['addresses'])} addresses")
+    except Exception as e:
+        logger.warning(f"Error extracting addresses: {str(e)}")
     
     return contact_info
 
 def extract_team_info(soup):
     """Extract team information from the page"""
+    logger.debug("Extracting team information")
     team_info = []
     
-    # Look for team member sections with various selectors
-    team_selectors = [
-        {'class': re.compile(r'team|member|founder|leadership|staff|employee', re.I)},
-        {'id': re.compile(r'team|member|founder|leadership|staff', re.I)},
-        {'data-team': True}
-    ]
-    
-    team_sections = []
-    for selector in team_selectors:
-        team_sections.extend(soup.find_all(['div', 'section', 'article'], selector))
-    
-    # Also look for structured data
-    for section in team_sections:
-        # Method 1: Look for name-title pairs
-        names = section.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'b'])
-        for name_elem in names:
-            name_text = name_elem.get_text().strip()
-            
-            # Basic validation for person names
-            if (2 <= len(name_text.split()) <= 4 and 
-                len(name_text) < 50 and 
-                not any(skip in name_text.lower() for skip in ['team', 'leadership', 'about', 'contact'])):
-                
-                # Look for title/role nearby
-                title = ""
-                
-                # Check next sibling elements
-                for sibling in name_elem.find_next_siblings(['p', 'div', 'span', 'h6'])[:3]:
-                    sibling_text = sibling.get_text().strip()
-                    if sibling_text and len(sibling_text) < 100:
-                        title = sibling_text
-                        break
-                
-                # Check parent container
-                if not title:
-                    parent = name_elem.parent
-                    if parent:
-                        title_elem = parent.find(['p', 'span', 'div'])
-                        if title_elem:
-                            title = title_elem.get_text().strip()[:100]
-                
-                team_info.append({
-                    'name': name_text,
-                    'title': title
-                })
-    
-    # Remove duplicates based on name
-    seen_names = set()
-    unique_team_info = []
-    for member in team_info:
-        if member['name'] not in seen_names:
-            seen_names.add(member['name'])
-            unique_team_info.append(member)
-    
-    return unique_team_info
+    try:
+        team_selectors = [
+            {'class': re.compile(r'team|member|founder|leadership|staff|employee', re.I)},
+            {'id': re.compile(r'team|member|founder|leadership|staff', re.I)}
+        ]
+        
+        team_sections = []
+        for selector in team_selectors:
+            try:
+                team_sections.extend(soup.find_all(['div', 'section', 'article'], selector))
+            except Exception as e:
+                logger.warning(f"Error with team selector: {str(e)}")
+                continue
+        
+        logger.debug(f"Found {len(team_sections)} potential team sections")
+        
+        for section in team_sections:
+            try:
+                names = section.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'strong', 'b'])
+                for name_elem in names:
+                    name_text = name_elem.get_text().strip()
+                    
+                    if (2 <= len(name_text.split()) <= 4 and 
+                        len(name_text) < 50 and 
+                        not any(skip in name_text.lower() for skip in ['team', 'leadership', 'about', 'contact'])):
+                        
+                        title = ""
+                        
+                        for sibling in name_elem.find_next_siblings(['p', 'div', 'span', 'h6'])[:3]:
+                            sibling_text = sibling.get_text().strip()
+                            if sibling_text and len(sibling_text) < 100:
+                                title = sibling_text
+                                break
+                        
+                        if not title:
+                            parent = name_elem.parent
+                            if parent:
+                                title_elem = parent.find(['p', 'span', 'div'])
+                                if title_elem:
+                                    title = title_elem.get_text().strip()[:100]
+                        
+                        team_info.append({
+                            'name': name_text,
+                            'title': title
+                        })
+            except Exception as e:
+                logger.warning(f"Error processing team section: {str(e)}")
+                continue
+        
+        # Remove duplicates
+        seen_names = set()
+        unique_team_info = []
+        for member in team_info:
+            if member['name'] not in seen_names:
+                seen_names.add(member['name'])
+                unique_team_info.append(member)
+        
+        logger.debug(f"Extracted {len(unique_team_info)} unique team members")
+        return unique_team_info[:10]
+        
+    except Exception as e:
+        logger.warning(f"Error extracting team info: {str(e)}")
+        return []
 
 def extract_products_services(soup):
     """Extract products and services information"""
+    logger.debug("Extracting products and services")
     products_services = []
     
-    # Look for product/service sections
-    product_selectors = [
-        {'class': re.compile(r'product|service|offering|solution|feature', re.I)},
-        {'id': re.compile(r'product|service|offering|solution', re.I)}
-    ]
-    
-    sections = []
-    for selector in product_selectors:
-        sections.extend(soup.find_all(['div', 'section', 'article'], selector))
-    
-    for section in sections:
-        title_elem = section.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-        if title_elem:
-            title = title_elem.get_text().strip()
-            
-            # Find description
-            description = ""
-            desc_elem = section.find(['p', 'div'])
-            if desc_elem:
-                description = desc_elem.get_text().strip()
-            
-            # Get any additional info like pricing, features
-            features = []
-            feature_lists = section.find_all(['ul', 'ol'])
-            for feature_list in feature_lists:
-                features.extend([li.get_text().strip() for li in feature_list.find_all('li')])
-            
-            if title and len(title) > 3:  # Basic validation
-                product_info = {
-                    'title': title[:200],
-                    'description': description[:1000]
-                }
-                if features:
-                    product_info['features'] = features[:10]  # Limit features
-                
-                products_services.append(product_info)
-    
-    return products_services
+    try:
+        product_selectors = [
+            {'class': re.compile(r'product|service|offering|solution|feature', re.I)},
+            {'id': re.compile(r'product|service|offering|solution', re.I)}
+        ]
+        
+        sections = []
+        for selector in product_selectors:
+            try:
+                sections.extend(soup.find_all(['div', 'section', 'article'], selector))
+            except Exception as e:
+                logger.warning(f"Error with product selector: {str(e)}")
+                continue
+        
+        logger.debug(f"Found {len(sections)} potential product/service sections")
+        
+        for section in sections:
+            try:
+                title_elem = section.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+                if title_elem:
+                    title = title_elem.get_text().strip()
+                    
+                    description = ""
+                    desc_elem = section.find(['p', 'div'])
+                    if desc_elem:
+                        description = desc_elem.get_text().strip()
+                    
+                    if title and len(title) > 3:
+                        product_info = {
+                            'title': title[:200],
+                            'description': description[:1000]
+                        }
+                        products_services.append(product_info)
+            except Exception as e:
+                logger.warning(f"Error processing product section: {str(e)}")
+                continue
+        
+        logger.debug(f"Extracted {len(products_services)} products/services")
+        return products_services[:10]
+        
+    except Exception as e:
+        logger.warning(f"Error extracting products/services: {str(e)}")
+        return []
 
 def extract_news_posts(soup):
     """Extract news/blog posts"""
+    logger.debug("Extracting news/blog posts")
     news_data = []
     
-    # Look for news/blog sections
-    news_selectors = [
-        {'class': re.compile(r'news|blog|post|article|press|update', re.I)},
-        {'id': re.compile(r'news|blog|post|article|press', re.I)}
+    try:
+        news_selectors = [
+            {'class': re.compile(r'news|blog|post|article|press|update', re.I)},
+            {'id': re.compile(r'news|blog|post|article|press', re.I)}
+        ]
+        
+        sections = []
+        for selector in news_selectors:
+            try:
+                sections.extend(soup.find_all(['div', 'article', 'section'], selector))
+            except Exception as e:
+                logger.warning(f"Error with news selector: {str(e)}")
+                continue
+        
+        logger.debug(f"Found {len(sections)} potential news sections")
+        
+        for section in sections:
+            try:
+                title_elem = section.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+                if title_elem:
+                    title = title_elem.get_text().strip()
+                    
+                    date = ""
+                    date_patterns = [
+                        {'class': re.compile(r'date|time|published', re.I)},
+                        {'datetime': True}
+                    ]
+                    
+                    for pattern in date_patterns:
+                        try:
+                            date_elem = section.find(['time', 'span', 'div'], pattern)
+                            if date_elem:
+                                date = date_elem.get_text().strip()
+                                break
+                        except Exception:
+                            continue
+                    
+                    content = ""
+                    try:
+                        content_elem = section.find(['p', 'div'])
+                        if content_elem:
+                            content = content_elem.get_text().strip()
+                    except Exception:
+                        pass
+                    
+                    if title and len(title) > 5:
+                        news_data.append({
+                            'title': title[:300],
+                            'date': date[:50],
+                            'content': content[:800]
+                        })
+            except Exception as e:
+                logger.warning(f"Error processing news section: {str(e)}")
+                continue
+        
+        logger.debug(f"Extracted {len(news_data)} news items")
+        return news_data[:10]
+        
+    except Exception as e:
+        logger.warning(f"Error extracting news posts: {str(e)}")
+        return []
+
+def extract_company_name(soup: BeautifulSoup, url: str) -> str:
+    """Extract company name with better fallbacks and logging"""
+    logger.debug("Extracting company name")
+    
+    marketing_keywords = [
+        'get', 'start', 'try', 'buy', 'learn', 'discover', 'create', 'build', 
+        'best', 'top', 'leading', 'ultimate', 'perfect', 'easy', 'simple',
+        'that', 'which', 'for your', 'solution', 'platform', 'software'
     ]
     
-    sections = []
-    for selector in news_selectors:
-        sections.extend(soup.find_all(['div', 'article', 'section'], selector))
+    def looks_like_marketing(text: str) -> bool:
+        if not text or len(text) > 60:
+            return True
+        text_lower = text.lower()
+        marketing_count = sum(1 for keyword in marketing_keywords if keyword in text_lower)
+        return marketing_count >= 2
     
-    for section in sections:
-        title_elem = section.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-        if title_elem:
-            title = title_elem.get_text().strip()
+    def extract_from_domain(url: str) -> str:
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        domain_name = domain.split('.')[0]
+        company_name = domain_name.replace('-', ' ').replace('_', ' ')
+        return ' '.join(word.capitalize() for word in company_name.split())
+    
+    candidates = []
+    
+    # Try multiple sources
+    try:
+        if soup.title:
+            title = soup.title.string.strip()
+            logger.debug(f"Found page title: {title}")
             
-            # Extract date
-            date = ""
-            date_patterns = [
-                {'class': re.compile(r'date|time|published', re.I)},
-                {'datetime': True},
-                {'time': True}
-            ]
-            
-            for pattern in date_patterns:
-                date_elem = section.find(['time', 'span', 'div'], pattern)
-                if date_elem:
-                    date = date_elem.get_text().strip()
+            for separator in ['|', '-', '–', ':', '•']:
+                if separator in title:
+                    parts = [part.strip() for part in title.split(separator)]
+                    for part in parts:
+                        if part and not looks_like_marketing(part):
+                            candidates.append(part)
+                            logger.debug(f"Added title candidate: {part}")
                     break
-            
-            # Extract content
-            content = ""
-            content_elem = section.find(['p', 'div'])
-            if content_elem:
-                content = content_elem.get_text().strip()
-            
-            if title and len(title) > 5:  # Basic validation
-                news_data.append({
-                    'title': title[:300],
-                    'date': date[:50],
-                    'content': content[:800]
-                })
+            if not candidates and not looks_like_marketing(title):
+                candidates.append(title)
+                logger.debug(f"Added full title as candidate: {title}")
+    except Exception as e:
+        logger.warning(f"Error extracting from title: {str(e)}")
     
-    return news_data
+    try:
+        og_site_name = soup.find('meta', property='og:site_name')
+        if og_site_name and og_site_name.get('content'):
+            site_name = og_site_name['content'].strip()
+            logger.debug(f"Found OG site name: {site_name}")
+            if not looks_like_marketing(site_name):
+                candidates.append(site_name)
+                logger.debug(f"Added OG site name as candidate: {site_name}")
+    except Exception as e:
+        logger.warning(f"Error extracting OG site name: {str(e)}")
+    
+    final_name = candidates[0] if candidates else extract_from_domain(url)
+    logger.info(f"Extracted company name: {final_name}")
+    return final_name
 
-async def fetch_news_data(company_name: str) -> List[Dict[str, str]]:
-    """Fetch external news data about the company"""
-    # This is a placeholder for future implementation
-    # In a real implementation, this would call a news API or web search
-    return []
+def extract_description(soup: BeautifulSoup) -> str:
+    """Extract site description with logging"""
+    logger.debug("Extracting site description")
+    
+    try:
+        meta_desc = soup.find('meta', {'name': 'description'})
+        if meta_desc and meta_desc.get('content'):
+            desc = meta_desc['content'].strip()
+            logger.debug(f"Found meta description: {desc[:100]}...")
+            return desc
+    except Exception as e:
+        logger.warning(f"Error extracting meta description: {str(e)}")
+    
+    try:
+        og_desc = soup.find('meta', property='og:description')
+        if og_desc and og_desc.get('content'):
+            desc = og_desc['content'].strip()
+            logger.debug(f"Found OG description: {desc[:100]}...")
+            return desc
+    except Exception as e:
+        logger.warning(f"Error extracting OG description: {str(e)}")
+    
+    try:
+        first_p = soup.find('p')
+        if first_p:
+            text = first_p.get_text().strip()
+            if len(text) > 50:
+                desc = text[:300]
+                logger.debug(f"Found first paragraph description: {desc[:100]}...")
+                return desc
+    except Exception as e:
+        logger.warning(f"Error extracting first paragraph: {str(e)}")
+    
+    logger.debug("No description found")
+    return ""
 
-# This function has been moved to founder_info.py
+def extract_social_links(soup: BeautifulSoup) -> Dict[str, str]:
+    """Extract social media links with logging"""
+    logger.debug("Extracting social media links")
+    social_links = {}
+    
+    try:
+        social_platforms = {
+            'twitter': ['twitter.com', 'x.com'],
+            'linkedin': ['linkedin.com'],
+            'facebook': ['facebook.com'],
+            'instagram': ['instagram.com'],
+            'github': ['github.com'],
+            'youtube': ['youtube.com']
+        }
+        
+        for link in soup.find_all('a', href=True):
+            try:
+                href = link['href'].lower()
+                for platform, domains in social_platforms.items():
+                    if any(domain in href for domain in domains):
+                        if href.startswith('//'):
+                            href = 'https:' + href
+                        elif not href.startswith('http'):
+                            continue
+                        social_links[platform] = href
+                        logger.debug(f"Found {platform} link: {href}")
+                        break
+            except Exception as e:
+                logger.warning(f"Error processing social link: {str(e)}")
+                continue
+    except Exception as e:
+        logger.warning(f"Error extracting social links: {str(e)}")
+    
+    logger.debug(f"Found {len(social_links)} social media links")
+    return social_links
 
 def clean_text(text):
-    """Clean and normalize text content"""
+    """Clean and normalize text content with logging"""
     if not text:
         return ""
+    
+    original_length = len(text)
     
     # Remove excessive whitespace
     text = re.sub(r'\s+', ' ', text)
@@ -466,119 +1037,16 @@ def clean_text(text):
     for pattern in ui_patterns:
         text = re.sub(pattern, '', text, flags=re.IGNORECASE)
     
+    final_length = len(text)
+    if original_length != final_length:
+        logger.debug(f"Text cleaning: {original_length} -> {final_length} characters")
+    
     return text.strip()
-
-def extract_company_name(soup: BeautifulSoup, url: str) -> str:
-    """
-    Extract company name with fallback to domain if title/meta content looks like marketing copy
-    """
-    
-    # Marketing/tagline indicators - if we see these, it's probably not a company name
-    marketing_keywords = [
-        # Action words
-        'get', 'start', 'try', 'buy', 'learn', 'discover', 'create', 'build', 'make', 
-        'grow', 'boost', 'increase', 'improve', 'transform', 'convert', 'deliver',
-        'drive', 'scale', 'automate', 'connect', 'helps', 'help',
-        
-        # Descriptive words  
-        'best', 'top', 'leading', 'ultimate', 'perfect', 'easy', 'simple', 'fast',
-        'smart', 'powerful', 'advanced', 'revolutionary', 'cutting-edge',
-        
-        # Common tagline patterns
-        'that', 'which', 'for your', 'your business', 'solution', 'platform',
-        'software', 'service', 'tool', 'system', 'technology'
-    ]
-    
-    def looks_like_marketing(text: str) -> bool:
-        """Check if text looks like marketing copy rather than a company name"""
-        if not text or len(text) > 60:  # Too long for typical company name
-            return True
-            
-        text_lower = text.lower()
-        
-        # Count marketing keywords
-        marketing_count = sum(1 for keyword in marketing_keywords if keyword in text_lower)
-        
-        # If multiple marketing words or specific patterns, likely marketing copy
-        if marketing_count >= 2:
-            return True
-            
-        # Check for specific tagline patterns
-        tagline_patterns = [
-            r'\bthat\s+\w+',     # "AI that converts"
-            r'\bfor\s+\w+',      # "Software for teams" 
-            r'\bto\s+\w+',       # "Tools to grow"
-            r'\byour\s+\w+',     # "Your business partner"
-            r'\bhelps?\s+\w+',   # "Helps you grow"
-        ]
-        
-        for pattern in tagline_patterns:
-            if re.search(pattern, text_lower):
-                return True
-                
-        return False
-    
-    def extract_from_domain(url: str) -> str:
-        """Extract clean company name from domain"""
-        parsed_url = urlparse(url)
-        domain = parsed_url.netloc
-        
-        # Remove www prefix
-        if domain.startswith('www.'):
-            domain = domain[4:]
-        
-        # Get main domain part (before first dot)
-        domain_name = domain.split('.')[0]
-        
-        # Convert to readable format
-        company_name = domain_name.replace('-', ' ').replace('_', ' ')
-        
-        # Capitalize properly
-        return ' '.join(word.capitalize() for word in company_name.split())
-    
-    # Try to extract from common sources, but validate each
-    candidates = []
-    
-    # 1. Try page title
-    if soup.title:
-        title = soup.title.string.strip()
-        
-        # Split by common separators and check each part
-        for separator in ['|', '-', '–', ':', '•']:
-            if separator in title:
-                parts = [part.strip() for part in title.split(separator)]
-                for part in parts:
-                    if part and not looks_like_marketing(part):
-                        candidates.append(part)
-                break
-        
-        # If no separator, check whole title
-        if not candidates and not looks_like_marketing(title):
-            candidates.append(title)
-    
-    # 2. Try Open Graph site name
-    og_site_name = soup.find('meta', property='og:site_name')
-    if og_site_name and og_site_name.get('content'):
-        site_name = og_site_name['content'].strip()
-        if not looks_like_marketing(site_name):
-            candidates.append(site_name)
-    
-    # 3. Try meta application name
-    app_name = soup.find('meta', {'name': 'application-name'})
-    if app_name and app_name.get('content'):
-        app_name_content = app_name['content'].strip()
-        if not looks_like_marketing(app_name_content):
-            candidates.append(app_name_content)
-    
-    # Return first valid candidate or fall back to domain
-    if candidates:
-        return candidates[0]
-    else:
-        return extract_from_domain(url)
 
 async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
     """
     Enhanced website scraping with smart page discovery and classification.
+    Continues scraping even if individual sections encounter errors.
     
     Args:
         url (str): The URL of the startup's website to scrape
@@ -587,21 +1055,19 @@ async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
     Returns:
         ScrapedData: Structured data extracted from the website
     """
-    """
-    Enhanced website scraping with smart page discovery and classification
-    """
     logger.info(f"Starting enhanced scraping of {url} with max_pages: {max_pages}")
     
+    text_extractor = EnhancedTextExtractor()
     classifier = SmartPageClassifier()
     pages_scraped = []
     all_discovered_links = set()
     classified_pages = defaultdict(list)
-    pages_to_scrape = deque([(url, "")])  # (url, link_text) pairs
+    pages_to_scrape = deque([(url, "")])
     
     # Initialize session with better configuration
     session = requests.Session()
     session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     })
     
     retries = requests.adapters.Retry(
@@ -615,20 +1081,60 @@ async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
     
     try:
         # Step 1: Scrape main page
-        logger.info("Scraping main page...")
-        response = session.get(url, timeout=20)
-        response.raise_for_status()
-        
-        main_soup = BeautifulSoup(response.text, 'html.parser')
-        main_text = main_soup.get_text(separator='\n', strip=True)
+        logger.info("Step 1: Scraping main page...")
+        try:
+            logger.debug(f"Fetching URL: {url}")
+            response = session.get(url, timeout=20)
+            response.raise_for_status()
+            logger.debug(f"Successfully fetched main page, status: {response.status_code}")
+            
+            main_soup = BeautifulSoup(response.text, 'html.parser')
+            logger.debug("Successfully parsed HTML with BeautifulSoup")
+            
+            # Remove noise elements and extract clean text
+            cleaned_soup = text_extractor.remove_noise_elements(main_soup)
+            main_text = text_extractor.extract_main_content(cleaned_soup)
+            
+        except requests.RequestException as e:
+            error_msg = f"Failed to fetch website {url}: {str(e)}"
+            logger.error(error_msg)
+            return ScrapedData(
+                company_name=urlparse(url).netloc,
+                description=f"Error fetching website: {str(e)}",
+                raw_text=""
+            )
+        except Exception as e:
+            error_msg = f"Error parsing website {url}: {str(e)}"
+            logger.error(error_msg)
+            return ScrapedData(
+                company_name=urlparse(url).netloc,
+                description=f"Error parsing website: {str(e)}",
+                raw_text=""
+            )
         
         # Extract basic company info from main page
-        company_name = extract_company_name(main_soup, url)
-        description = extract_description(main_soup)
-        social_links = extract_social_links(main_soup)
+        logger.info("Step 2: Extracting basic company information...")
+        try:
+            company_name = extract_company_name(main_soup, url)
+        except Exception as e:
+            logger.warning(f"Error extracting company name: {str(e)}")
+            company_name = urlparse(url).netloc
+        
+        try:
+            description = extract_description(main_soup)
+        except Exception as e:
+            logger.warning(f"Error extracting description: {str(e)}")
+            description = ""
+        
+        try:
+            social_links = extract_social_links(main_soup)
+        except Exception as e:
+            logger.warning(f"Error extracting social links: {str(e)}")
+            social_links = {}
         
         # Initialize combined text with main page
-        all_text = f"--- MAIN PAGE ---\n{clean_text(main_text)}"
+        all_text = f"--- MAIN PAGE ---\n{main_text}"
+        logger.debug(f"Main page text length: {len(main_text)} characters")
         
         pages_scraped.append({
             'url': url,
@@ -637,26 +1143,107 @@ async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
             'word_count': len(main_text.split())
         })
         
-        # Step 2: Discover all internal links from main page
+        # Step 3: Discover all internal links from main page
+        logger.info("Step 3: Discovering internal links...")
         base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
         links_with_context = extract_links_with_context(main_soup, base_url)
         
-        # Step 3: Classify discovered links
-        unique_links = {}  # Use dict to avoid duplicates while keeping context
+        # Deduplicate URLs before processing
+        links_with_context = deduplicate_urls(links_with_context)
+        logger.debug(f"After deduplication: {len(links_with_context)} unique links")
+        
+        # Step 4: Classify discovered links and verify they exist
+        logger.info("Step 4: Classifying and verifying discovered links...")
+        unique_links = {}
+        verified_links = []
+        scraped_urls = set()  # Track URLs we've already scraped
+        
         for link_url, context in links_with_context:
-            if is_same_domain(link_url, url) and link_url != url:  # Exclude main page
+            if is_same_domain(link_url, url) and link_url != url:
                 if link_url not in unique_links:
                     unique_links[link_url] = context
-                    all_discovered_links.add((link_url, context))
-                    classifications = classifier.classify_page(link_url, context)
-                    for classification in classifications:
-                        if not any(existing_url == link_url for existing_url, _ in classified_pages[classification]):
-                            classified_pages[classification].append((link_url, context))
+                    
+                    # Verify the URL exists before adding to discovered links
+                    try:
+                        # Quick HEAD request to check if URL exists
+                        head_response = session.head(link_url, timeout=5, allow_redirects=True)
+                        if head_response.status_code < 400:
+                            all_discovered_links.add((link_url, context))
+                            verified_links.append((link_url, context))
+                            logger.debug(f"Verified URL exists: {link_url}")
+                        else:
+                            logger.debug(f"URL returned {head_response.status_code}: {link_url}")
+                    except Exception as e:
+                        # If HEAD fails, try GET as some servers don't support HEAD
+                        try:
+                            get_response = session.get(link_url, timeout=5, allow_redirects=True)
+                            if get_response.status_code < 400:
+                                all_discovered_links.add((link_url, context))
+                                verified_links.append((link_url, context))
+                                logger.debug(f"Verified URL exists (GET): {link_url}")
+                            else:
+                                logger.debug(f"URL not accessible: {link_url} - {str(e)}")
+                        except Exception as e2:
+                            logger.debug(f"URL verification failed: {link_url} - {str(e2)}")
+                            continue
         
-        logger.info(f"Discovered {len(all_discovered_links)} internal links")
+        # Classify verified links with deduplication
+        for link_url, context in verified_links:
+            classifications = classifier.classify_page(link_url, context)
+            for classification in classifications:
+                # Only add if we haven't already classified this URL for this type
+                existing_urls = [existing_url for existing_url, _ in classified_pages[classification]]
+                if not any(urls_are_equivalent(link_url, existing_url) for existing_url in existing_urls):
+                    classified_pages[classification].append((link_url, context))
+        
+        logger.info(f"Discovered {len(all_discovered_links)} verified internal links")
         logger.info(f"Classified pages: {dict(classified_pages)}")
         
-        # Step 4: Prioritize pages to scrape based on classification and max_pages
+        # If we didn't find many pages, try some additional discovery methods
+        if len(all_discovered_links) < 3:
+            logger.info("Few pages discovered, trying additional discovery methods...")
+            
+            # Method: Check common page patterns directly
+            common_paths = [
+                'about', 'about-us', 'company', 'our-story', 'who-we-are',
+                'products', 'product', 'services', 'solutions', 'platform', 'features',
+                'team', 'our-team', 'leadership', 'founders', 'people',
+                'contact', 'contact-us', 'get-in-touch', 'support',
+                'news', 'blog', 'press', 'media', 'updates', 'insights'
+            ]
+            
+            additional_found = 0
+            for path in common_paths:
+                test_url = f"{base_url}/{path}"
+                
+                # Check if we already have an equivalent URL
+                if any(urls_are_equivalent(test_url, existing_url) for existing_url, _ in all_discovered_links):
+                    continue
+                
+                try:
+                    test_response = session.head(test_url, timeout=3, allow_redirects=True)
+                    if test_response.status_code < 400:
+                        all_discovered_links.add((test_url, f"{path} (direct discovery)"))
+                        classifications = classifier.classify_page(test_url, path)
+                        for classification in classifications:
+                            # Check for equivalent URLs in this classification
+                            existing_urls = [existing_url for existing_url, _ in classified_pages[classification]]
+                            if not any(urls_are_equivalent(test_url, existing_url) for existing_url in existing_urls):
+                                classified_pages[classification].append((test_url, f"{path} (direct discovery)"))
+                        additional_found += 1
+                        logger.debug(f"Direct discovery found: {test_url}")
+                        
+                        if additional_found >= 5:  # Limit additional discoveries
+                            break
+                except Exception:
+                    continue
+            
+            if additional_found > 0:
+                logger.info(f"Additional discovery found {additional_found} more pages")
+        
+        
+        # Step 5: Prioritize pages to scrape based on classification and max_pages
+        logger.info("Step 5: Prioritizing pages to scrape...")
         priority_pages = []
         
         # Define key page types in order of importance
@@ -668,6 +1255,7 @@ async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
                 link_url, context = classified_pages[page_type][0]
                 if len(priority_pages) < max_pages - 1:  # -1 for main page
                     priority_pages.append((link_url, context, page_type))
+                    logger.debug(f"Added {page_type} page to priority: {link_url}")
         
         # Then fill remaining slots with other classified pages
         remaining_slots = max_pages - len(priority_pages) - 1  # -1 for main page
@@ -685,8 +1273,10 @@ async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
             
             # Add remaining classified pages
             priority_pages.extend(remaining_classified[:remaining_slots])
+            logger.debug(f"Added {len(remaining_classified[:remaining_slots])} additional pages")
         
-        # Step 5: Scrape prioritized pages
+        # Step 6: Scrape prioritized pages with deduplication
+        logger.info(f"Step 6: Scraping {len(priority_pages)} prioritized pages...")
         scraped_data_parts = {
             'about_page': None,
             'contact_info': {},
@@ -695,9 +1285,15 @@ async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
             'news_data': []
         }
         
-        logger.info(f"Scraping {len(priority_pages)} prioritized pages")
+        scraped_urls = set()  # Track URLs we've actually scraped content from
+        
         for i, (page_url, context, page_type) in enumerate(priority_pages, 1):
             try:
+                # Skip if we've already scraped an equivalent URL
+                if any(urls_are_equivalent(page_url, scraped_url) for scraped_url in scraped_urls):
+                    logger.debug(f"Skipping duplicate URL: {page_url}")
+                    continue
+                
                 if page_url == url:  # Skip if same as main page
                     continue
                 
@@ -709,6 +1305,7 @@ async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
                 
                 page_response = session.get(page_url, timeout=15)
                 page_response.raise_for_status()
+                logger.debug(f"Successfully fetched {page_url}, status: {page_response.status_code}")
                 
                 # Verify content type
                 content_type = page_response.headers.get('content-type', '')
@@ -717,37 +1314,116 @@ async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
                     continue
                 
                 page_soup = BeautifulSoup(page_response.text, 'html.parser')
-                page_text = page_soup.get_text(separator='\n', strip=True)
-                cleaned_page_text = clean_text(page_text)
                 
-                # Add to combined text
-                all_text += f"\n\n--- {page_type.upper()} PAGE: {page_url} ---\n{cleaned_page_text}"
+                # Clean and extract text
+                try:
+                    cleaned_page_soup = text_extractor.remove_noise_elements(page_soup)
+                    cleaned_page_text = text_extractor.extract_main_content(cleaned_page_soup)
+                    logger.debug(f"Extracted {len(cleaned_page_text)} characters from {page_type} page")
+                    
+                    # Add to combined text only if we haven't scraped this URL before
+                    all_text += f"\n\n--- {page_type.upper()} PAGE: {page_url} ---\n{cleaned_page_text}"
+                    scraped_urls.add(page_url)  # Mark this URL as scraped
+                    
+                except Exception as e:
+                    logger.warning(f"Error cleaning text for {page_url}: {str(e)}")
+                    # Fallback to basic text extraction
+                    try:
+                        fallback_text = page_soup.get_text(separator='\n', strip=True)
+                        cleaned_page_text = clean_text(fallback_text)
+                        all_text += f"\n\n--- {page_type.upper()} PAGE: {page_url} ---\n{cleaned_page_text}"
+                        scraped_urls.add(page_url)  # Mark this URL as scraped
+                        logger.debug(f"Used fallback text extraction for {page_url}")
+                    except Exception:
+                        logger.error(f"Failed to extract any text from {page_url}")
+                        continue
                 
                 # Extract specific information based on page type
-                if page_type == 'about':
-                    scraped_data_parts['about_page'] = cleaned_page_text
-                elif page_type == 'contact':
-                    scraped_data_parts['contact_info'].update(extract_contact_info(page_soup, cleaned_page_text))
-                elif page_type == 'team':
-                    scraped_data_parts['team_info'].extend(extract_team_info(page_soup))
-                elif page_type == 'products':
-                    scraped_data_parts['products_services'].extend(extract_products_services(page_soup))
-                elif page_type == 'news':
-                    scraped_data_parts['news_data'].extend(extract_news_posts(page_soup))
+                if page_type == 'about' and scraped_data_parts['about_page'] is None:
+                    try:
+                        scraped_data_parts['about_page'] = cleaned_page_text
+                        logger.debug("Successfully extracted about page content")
+                    except Exception as e:
+                        logger.warning(f"Error extracting about page: {str(e)}")
                 
-                # Track scraped page
+                elif page_type == 'contact':
+                    try:
+                        contact_info = extract_contact_info(page_soup, cleaned_page_text)
+                        if contact_info:
+                            # Merge contact info, handling list concatenation
+                            for key, value in contact_info.items():
+                                if key in scraped_data_parts['contact_info']:
+                                    # Extend existing lists and remove duplicates
+                                    scraped_data_parts['contact_info'][key].extend(value)
+                                    scraped_data_parts['contact_info'][key] = list(dict.fromkeys(
+                                        scraped_data_parts['contact_info'][key]))
+                                else:
+                                    scraped_data_parts['contact_info'][key] = value
+                            logger.debug(f"Successfully extracted contact info: {list(contact_info.keys())}")
+                    except Exception as e:
+                        logger.warning(f"Error extracting contact info: {str(e)}")
+                
+                elif page_type == 'team':
+                    try:
+                        team_info = extract_team_info(page_soup)
+                        if team_info:
+                            # Add team members, avoiding duplicates by name
+                            existing_names = {member['name'] for member in scraped_data_parts['team_info']}
+                            new_members = [member for member in team_info if member['name'] not in existing_names]
+                            scraped_data_parts['team_info'].extend(new_members)
+                            logger.debug(f"Successfully extracted {len(new_members)} new team members")
+                    except Exception as e:
+                        logger.warning(f"Error extracting team info: {str(e)}")
+                
+                elif page_type == 'products':
+                    try:
+                        products = extract_products_services(page_soup)
+                        if products:
+                            # Add products, avoiding duplicates by title
+                            existing_titles = {product['title'] for product in scraped_data_parts['products_services']}
+                            new_products = [product for product in products if product['title'] not in existing_titles]
+                            scraped_data_parts['products_services'].extend(new_products)
+                            logger.debug(f"Successfully extracted {len(new_products)} new products/services")
+                    except Exception as e:
+                        logger.warning(f"Error extracting products/services: {str(e)}")
+                
+                elif page_type == 'news':
+                    try:
+                        news = extract_news_posts(page_soup)
+                        if news:
+                            # Add news items, avoiding duplicates by title
+                            existing_titles = {item['title'] for item in scraped_data_parts['news_data']}
+                            new_news = [item for item in news if item['title'] not in existing_titles]
+                            scraped_data_parts['news_data'].extend(new_news)
+                            logger.debug(f"Successfully extracted {len(new_news)} new news items")
+                    except Exception as e:
+                        logger.warning(f"Error extracting news data: {str(e)}")
+                
+                # Track scraped page (only for unique URLs)
                 pages_scraped.append({
                     'url': page_url,
                     'type': page_type,
                     'title': page_soup.title.string if page_soup.title else f'{page_type.title()} Page',
-                    'word_count': len(page_text.split())
+                    'word_count': len(cleaned_page_text.split()) if 'cleaned_page_text' in locals() else 0
                 })
                 
             except Exception as e:
                 logger.warning(f"Error scraping {page_url}: {str(e)}")
                 continue
         
-        # Step 6: Create final ScrapedData object
+        # Step 7: Create final ScrapedData object
+        logger.info("Step 7: Creating final scraped data object...")
+        
+        # Remove duplicates from team info
+        if scraped_data_parts['team_info']:
+            seen_names = set()
+            unique_team = []
+            for member in scraped_data_parts['team_info']:
+                if member['name'] not in seen_names:
+                    seen_names.add(member['name'])
+                    unique_team.append(member)
+            scraped_data_parts['team_info'] = unique_team
+        
         scraped_data = ScrapedData(
             company_name=company_name,
             description=description,
@@ -762,65 +1438,17 @@ async def scrape_website(url: str, max_pages: int = 5) -> ScrapedData:
             total_pages_found=len(all_discovered_links)
         )
         
-        logger.info(f"Scraping completed. Scraped {len(pages_scraped)} pages out of {len(all_discovered_links)} discovered")
+        logger.info(f"Scraping completed successfully!")
+        logger.info(f"- Scraped {len(pages_scraped)} pages out of {len(all_discovered_links)} discovered")
+        logger.info(f"- Total text length: {len(all_text)} characters")
+        logger.info(f"- Company: {company_name}")
+        logger.info(f"- Team members found: {len(scraped_data_parts['team_info']) if scraped_data_parts['team_info'] else 0}")
+        logger.info(f"- Products/services found: {len(scraped_data_parts['products_services']) if scraped_data_parts['products_services'] else 0}")
+        logger.info(f"- Contact info types: {list(scraped_data_parts['contact_info'].keys()) if scraped_data_parts['contact_info'] else []}")
+        
         return scraped_data
         
     except Exception as e:
-        logger.error(f"Error during website scraping: {str(e)}")
+        error_msg = f"Error during website scraping: {str(e)}"
+        logger.error(error_msg)
         raise Exception(f"Failed to scrape website: {str(e)}")
-
-def extract_description(soup: BeautifulSoup) -> str:
-    """Extract site description from various sources"""
-    # Try meta description
-    meta_desc = soup.find('meta', {'name': 'description'})
-    if meta_desc and meta_desc.get('content'):
-        return meta_desc['content'].strip()
-    
-    # Try Open Graph description
-    og_desc = soup.find('meta', property='og:description')
-    if og_desc and og_desc.get('content'):
-        return og_desc['content'].strip()
-    
-    # Try first paragraph
-    first_p = soup.find('p')
-    if first_p:
-        text = first_p.get_text().strip()
-        if len(text) > 50:  # Ensure it's substantial
-            return text[:300]  # Limit length
-    
-    # Try h1 + following paragraph
-    h1 = soup.find('h1')
-    if h1:
-        next_elem = h1.find_next('p')
-        if next_elem:
-            return next_elem.get_text().strip()[:300]
-    
-    return ""
-
-def extract_social_links(soup: BeautifulSoup) -> Dict[str, str]:
-    """Extract social media links"""
-    social_links = {}
-    social_platforms = {
-        'twitter': ['twitter.com', 'x.com'],
-        'linkedin': ['linkedin.com'],
-        'facebook': ['facebook.com'],
-        'instagram': ['instagram.com'],
-        'github': ['github.com'],
-        'youtube': ['youtube.com'],
-        'tiktok': ['tiktok.com'],
-        'discord': ['discord.com', 'discord.gg']
-    }
-    
-    for link in soup.find_all('a', href=True):
-        href = link['href'].lower()
-        for platform, domains in social_platforms.items():
-            if any(domain in href for domain in domains):
-                # Clean up the URL
-                if href.startswith('//'):
-                    href = 'https:' + href
-                elif not href.startswith('http'):
-                    continue
-                social_links[platform] = href
-                break
-    
-    return social_links

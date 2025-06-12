@@ -53,6 +53,22 @@ class StartupResponse(BaseModel):
 # Load environment variables and configure logging
 load_dotenv()
 
+# Initialize FastAPI app
+app = FastAPI(
+    title="VC Copilot API",
+    description="API for analyzing startups using AI and web scraping",
+    version="1.0.0"
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -340,8 +356,30 @@ async def scrape_only(url: str, max_pages: int = 5):
         logger.error(f"Error scraping website: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error scraping website: {str(e)}")
 
+from fastapi import HTTPException
+from pydantic import ValidationError
+
 @app.post("/analyze-data")
 async def analyze_scraped_data(scraped_data: ScrapedData, analysis_types: list = ["executive_summary", "success_prediction"]):
+    logger.info("Received request for analyze_scraped_data")
+    logger.info(f"Raw request data: {scraped_data}")
+    logger.info(f"Analysis types: {analysis_types}")
+    
+    try:
+        # Validate the data explicitly
+        if not isinstance(scraped_data, ScrapedData):
+            try:
+                scraped_data = ScrapedData(**scraped_data)
+            except ValidationError as e:
+                logger.error(f"Validation error: {str(e)}")
+                raise HTTPException(status_code=422, detail=str(e))
+        
+        logger.info(f"Validated data: {scraped_data.dict()}")
+        logger.info(f"Analyzing scraped data for {scraped_data.company_name}")
+    except Exception as e:
+        logger.error(f"Error analyzing data: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
     """
     Analyze already scraped data
     
@@ -408,7 +446,7 @@ async def get_founder_information(url: str):
         logger.info(f"Fetching founder information for URL: {url}")
         
         # Step 1: Scrape the website to get company name (minimal scrape for efficiency)
-        scraped_data = await scrape_website(url=url, scrape_depth="minimal")
+        scraped_data = await scrape_website(url=url, max_pages=1)  # Minimal scrape for founder info
         company_name = scraped_data.company_name
         
         # Step 2: Fetch founder information from Perplexity (separate from scraping)
