@@ -19,7 +19,7 @@ export default function FundingSection({ fundingData }: FundingSectionProps) {
 
   return (
     <div>
-      <h2 className="text-lg font-medium text-gray-900 mb-4">💰 Funding History & News</h2>
+      <h2 className="text-lg font-medium text-gray-900 mb-4">Funding History & News</h2>
       
       {/* Funding Summary */}
       <div className="bg-indigo-50 rounded-md p-4 mb-6">

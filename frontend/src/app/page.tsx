@@ -7,6 +7,7 @@ import FundingSection from '@/components/FundingSection';
 import SummarySection from '@/components/SummarySection';
 import FounderEvaluationSection from '@/components/FounderEvaluationSection';
 import ErrorDisplay from '@/components/ErrorDisplay';
+import LoadingPlaceholder from '@/components/LoadingPlaceholder';
 import { useVCCopilotStore } from '@/lib/store';
 
 export default function Home() {
@@ -17,7 +18,11 @@ export default function Home() {
     error,
     analysisData,
     analyzeStartup,
-    reset
+    reset,
+    summaryLoaded,
+    foundersLoaded,
+    fundingLoaded,
+    evaluationLoaded
   } = useVCCopilotStore();
 
   return (
@@ -25,7 +30,7 @@ export default function Home() {
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 sm:text-4xl">
-            🏢 VC Copilot Analysis
+            VC Copilot Analysis
           </h1>
           <p className="mt-3 text-lg text-gray-600">
             AI-powered startup analysis for venture capitalists
@@ -41,16 +46,14 @@ export default function Home() {
           </div>
         </div>
 
-        {(currentStep !== 'idle' || error) && (
-          <div className="bg-white shadow rounded-lg overflow-hidden mb-8">
-            <div className="p-6">
-              <ProgressIndicator 
-                currentStep={currentStep}
-                isLoading={isLoading}
-              />
-            </div>
+        <div className="bg-white shadow rounded-lg overflow-hidden mb-8">
+          <div className="p-6">
+            <ProgressIndicator 
+              currentStep={currentStep}
+              isLoading={isLoading}
+            />
           </div>
-        )}
+        </div>
 
         {error && (
           <ErrorDisplay 
@@ -59,50 +62,91 @@ export default function Home() {
           />
         )}
 
-        {(analysisData && !error) && (
-          <div className="space-y-8">
-            {/* Summary Section */}
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-              <div className="p-6">
-                <SummarySection 
-                  deepDiveSections={analysisData.deep_dive_sections}
-                />
-              </div>
-            </div>
-
+        <div className="space-y-8">
             {/* Founder Section */}
             <div className="bg-white shadow rounded-lg overflow-hidden">
               <div className="p-6">
-                <FounderSection 
-                  founderData={{
-                    founders: analysisData.founder_data || [],
-                    founding_story: analysisData.founding_story || '',
-                    company_name: analysisData.company_name || '',
-                    url: analysisData.url || ''
-                  }}
-                />
+                {analysisData?.founder_data ? (
+                  <FounderSection 
+                    founderData={{
+                      founders: analysisData.founder_data,
+                      founding_story: analysisData.founding_story || '',
+                      company_name: analysisData.company_name || '',
+                      url: analysisData.url || ''
+                    }}
+                  />
+                ) : (
+                  <div>
+                    <h2 className="text-lg font-medium text-gray-900 mb-4">Founder Information</h2>
+                    {currentStep === 'founders' ? <LoadingPlaceholder /> : 
+                      <p className="text-gray-500 italic">
+                        {currentStep === 'analyzing' ? 'Fetching website data...' : 'Enter a startup URL above to begin analysis'}
+                      </p>
+                    }
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Funding Section */}
             <div className="bg-white shadow rounded-lg overflow-hidden">
               <div className="p-6">
-                <FundingSection 
-                  fundingData={analysisData.funding_data}
-                />
+                {analysisData?.funding_data ? (
+                  <FundingSection 
+                    fundingData={analysisData.funding_data}
+                  />
+                ) : (
+                  <div>
+                    <h2 className="text-lg font-medium text-gray-900 mb-4">Funding History</h2>
+                    {currentStep === 'funding' ? <LoadingPlaceholder /> : 
+                      <p className="text-gray-500 italic">
+                        {['analyzing', 'founders'].includes(currentStep) ? 'Processing previous steps...' : 'Enter a startup URL above to begin analysis'}
+                      </p>
+                    }
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Summary Section */}
+            <div className="bg-white shadow rounded-lg overflow-hidden">
+              <div className="p-6">
+                {currentStep !== 'idle' && summaryLoaded && analysisData?.deep_dive_sections ? (
+                  <SummarySection 
+                    deepDiveSections={analysisData.deep_dive_sections}
+                  />
+                ) : (
+                  <div>
+                    <h2 className="text-lg font-medium text-gray-900 mb-4">Deep Dive Analysis</h2>
+                    {currentStep === 'deep_dive' ? <LoadingPlaceholder /> : 
+                      <p className="text-gray-500 italic">
+                        {['analyzing', 'founders', 'funding'].includes(currentStep) ? 'Gathering data...' : 'Enter a startup URL above to begin analysis'}
+                      </p>
+                    }
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Founder Evaluation Section */}
             <div className="bg-white shadow rounded-lg overflow-hidden">
               <div className="p-6">
-                <FounderEvaluationSection 
-                  evaluation={analysisData.founder_evaluation}
-                />
+                {currentStep !== 'idle' && evaluationLoaded && analysisData?.founder_evaluation ? (
+                  <FounderEvaluationSection 
+                    evaluation={analysisData.founder_evaluation}
+                  />
+                ) : (
+                  <div>
+                    <h2 className="text-lg font-medium text-gray-900 mb-4">Founder Evaluation</h2>
+                    {currentStep !== 'idle' ? <LoadingPlaceholder /> : 
+                      <p className="text-gray-500 italic">Enter a startup URL above to begin analysis</p>
+                    }
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        )}
+        )
 
 
         {(currentStep === 'complete' || error) && (

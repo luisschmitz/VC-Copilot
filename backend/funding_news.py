@@ -67,44 +67,42 @@ async def fetch_funding_news(url: str) -> Tuple[List[FundingRound], List[NewsIte
         # Format the prompt for Perplexity
         prompt = f"""Find comprehensive funding history and recent news for the startup at {url}. 
 
-IMPORTANT: You must return your response as a valid JSON object with the exact structure specified below. For any missing information, use "Not Available" as the value. Do not include any text before or after the JSON.
-
-Search for information from Crunchbase, PitchBook, company press releases, tech news sites, and investor announcements.
+IMPORTANT: You must return your response as a valid JSON object with the exact structure specified below. For any missing information, use "/" as the value. Do not include any text before or after the JSON.
 
 Return ONLY a JSON object with this exact structure:
 
 {{
     "funding_rounds": [
         {{
-            "date": "YYYY-MM-DD or Month Year format, or 'Not Available'",
-            "round_type": "Pre-seed/Seed/Series A/Series B/etc, or 'Not Available'",
-            "amount": "$X.XM format, or 'Not Available'",
-            "lead_investors": ["Lead Investor Name"] or ["Not Available"],
-            "other_investors": ["Investor 1", "Investor 2"] or ["Not Available"],
-            "valuation": "$X.XM pre-money/post-money format, or 'Not Available'",
-            "source_url": "URL of source or 'Not Available'"
+            "date": "YYYY-MM-DD or Month Year format, or '/'",
+            "round_type": "Pre-seed/Seed/Series A/Series B/etc, or '/'",
+            "amount": "$X.XM format, or '/'",
+            "lead_investors": ["Lead Investor Name"] or ["/"],
+            "other_investors": ["Investor 1", "Investor 2"] or ["/"],
+            "valuation": "$X.XM pre-money/post-money format, or '/'",
+            "source_url": "URL of source or '/'"
         }}
     ],
     "latest_news": [
         {{
-            "date": "YYYY-MM-DD or Month Year format, or 'Not Available'",
-            "title": "News headline or 'Not Available'",
-            "summary": "Brief summary of the news or 'Not Available'",
-            "source": "Source name or 'Not Available'",
-            "url": "URL to news article or 'Not Available'",
-            "category": "Product Launch/Partnership/Acquisition/Funding/etc or 'Not Available'"
+            "date": "YYYY-MM-DD or Month Year format, or '/'",
+            "title": "News headline or '/'",
+            "summary": "Brief summary of the news or '/'",
+            "source": "Source name or '/'",
+            "url": "URL to news article or '/'",
+            "category": "Product Launch/Partnership/Acquisition/Funding/etc or '/'"
         }}
     ],
-    "total_funding": "$X.XM format or 'Not Available'",
-    "funding_status": "Bootstrapped/Pre-seed/Seed-funded/Series A/Series B/etc or 'Not Available'",
-    "notable_investors": ["Notable Investor 1", "Notable Investor 2"] or ["Not Available"],
-    "last_funding_date": "YYYY-MM-DD or Month Year format, or 'Not Available'"
+    "total_funding": "$X.XM format or '/'",
+    "funding_status": "Bootstrapped/Pre-seed/Seed-funded/Series A/Series B/etc or '/'",
+    "notable_investors": ["Notable Investor 1", "Notable Investor 2"] or ["/"],
+    "last_funding_date": "YYYY-MM-DD or Month Year format, or '/'"
 }}
 
 Rules:
 1. Always include all fields even if no data is found
-2. Use "Not Available" for string fields when no information is found
-4. For arrays, use ["Not Available"] when no data is found
+2. Use '/' for string fields when no information is found
+4. For arrays, use ["/"] when no data is found
 5. Include at least the most recent 3-5 news items if available
 6. Include all known funding rounds
 7. Ensure the JSON is valid and properly formatted
@@ -137,11 +135,10 @@ Search thoroughly for this company's funding and news information."""
             result = response.json()
             
             # Only print in debug mode
-            if os.environ.get("DEBUG", "").lower() == "true":
-                print("\n==== PERPLEXITY API RESPONSE (FUNDING & NEWS) ====")
-                print(f"Status Code: {response.status_code}")
-                print(json.dumps(result, indent=2))
-                print("=================================================\n")
+            print("\n==== PERPLEXITY API RESPONSE (FUNDING & NEWS) ====")
+            print(f"Status Code: {response.status_code}")
+            print(json.dumps(result, indent=2))
+            print("=================================================\n")
             
             logger.info(f"Perplexity API response received for funding & news. Status: {response.status_code}")
             
@@ -274,10 +271,10 @@ def ensure_complete_structure(data: Dict[str, Any]) -> Dict[str, Any]:
     
     # Ensure all top-level fields exist
     required_fields = {
-        "total_funding": "Not Available",
-        "funding_status": "Not Available",
-        "notable_investors": ["Not Available"],
-        "last_funding_date": "Not Available"
+        "total_funding": "/",
+        "funding_status": "/",
+        "notable_investors": ["/"],
+        "last_funding_date": "/"
     }
     
     for field, default_value in required_fields.items():
@@ -287,13 +284,13 @@ def ensure_complete_structure(data: Dict[str, Any]) -> Dict[str, Any]:
     # Ensure each funding round has all required fields
     for round_data in data["funding_rounds"]:
         round_defaults = {
-            "date": "Not Available",
-            "round_type": "Not Available",
-            "amount": "Not Available",
-            "lead_investors": ["Not Available"],
-            "other_investors": ["Not Available"],
-            "valuation": "Not Available",
-            "source_url": "Not Available"
+            "date": "/",
+            "round_type": "/",
+            "amount": "/",
+            "lead_investors": ["/"],
+            "other_investors": ["/"],
+            "valuation": "/",
+            "source_url": "/"
         }
         
         for field, default_value in round_defaults.items():
@@ -303,12 +300,12 @@ def ensure_complete_structure(data: Dict[str, Any]) -> Dict[str, Any]:
     # Ensure each news item has all required fields
     for news_data in data["latest_news"]:
         news_defaults = {
-            "date": "Not Available",
-            "title": "Not Available",
-            "summary": "Not Available",
-            "source": "Not Available",
-            "url": "Not Available",
-            "category": "Not Available"
+            "date": "/",
+            "title": "/",
+            "summary": "/",
+            "source": "/",
+            "url": "/",
+            "category": "/"
         }
         
         for field, default_value in news_defaults.items():
@@ -322,8 +319,8 @@ def get_default_additional_info() -> Dict[str, Any]:
     Return default additional info structure when no data is available
     """
     return {
-        "total_funding": "Not Available",
-        "funding_status": "Not Available",
-        "notable_investors": ["Not Available"],
-        "last_funding_date": "Not Available"
+        "total_funding": "/",
+        "funding_status": "/",
+        "notable_investors": ["/"],
+        "last_funding_date": "/"
     }

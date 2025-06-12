@@ -11,7 +11,7 @@ export default function FounderSection({ founderData }: FounderSectionProps) {
 
   return (
     <div>
-      <h2 className="text-lg font-medium text-gray-900 mb-4">👥 Founder Information</h2>
+      <h2 className="text-lg font-medium text-gray-900 mb-4">Founder Information</h2>
       
       {founding_story && (
         <div className="mb-6">

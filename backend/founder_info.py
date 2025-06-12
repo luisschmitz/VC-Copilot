@@ -34,59 +34,78 @@ class FounderResponse(BaseModel):
 
 def clean_json_content(content: str) -> str:
     """Clean JSON content from markdown and comments"""
-    # Remove markdown code blocks
-    content = re.sub(r'```json\s*', '', content)
-    content = re.sub(r'```\s*', '', content)
+    # Extract content between ```json and ``` if present
+    json_block_match = re.search(r'```json\s*([\s\S]*?)```', content)
+    if json_block_match:
+        content = json_block_match.group(1)
+    else:
+        # Remove any remaining markdown code blocks
+        content = re.sub(r'```[^`]*```', '', content)
     
     # Remove comments
     content = re.sub(r'#[^\n]*', '', content)
     content = re.sub(r'//[^\n]*', '', content)
     
-    # Remove trailing commas
+    # Remove trailing commas in objects and arrays
     content = re.sub(r',(\s*[}\]])', r'\1', content)
     
-    # Clean up whitespace
+    # Clean up whitespace and special characters
     content = content.strip()
+    content = content.replace('\\n', '\n')
+    content = content.replace('\\"', '"')
+    content = content.replace('\\\\', '\\')
     
     return content
 
 def parse_response(content: str) -> Tuple[List[FounderInfo], Optional[str]]:
     """Parse the API response into structured data"""
     
+    def try_parse_json(json_str: str, source: str = "unknown") -> Optional[Dict]:
+        """Helper function to try parsing JSON with detailed logging"""
+        try:
+            data = json.loads(json_str)
+            if isinstance(data, dict) and "founders" in data:
+                logger.info(f"Successfully parsed JSON from {source} with {len(data.get('founders', []))} founders")
+                return data
+            else:
+                logger.warning(f"Parsed JSON from {source} but missing 'founders' key or invalid structure")
+        except json.JSONDecodeError as e:
+            logger.info(f"JSON parsing failed from {source}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error parsing JSON from {source}: {str(e)}")
+        return None
+    
     # Try direct JSON parsing first
-    try:
-        data = json.loads(content)
-        if "founders" in data:
-            logger.info(f"Successfully parsed JSON with {len(data.get('founders', []))} founders")
-            return process_founders(data)
-    except json.JSONDecodeError:
-        logger.info("Direct JSON parsing failed, trying to clean content...")
+    if data := try_parse_json(content, "direct parsing"):
+        return process_founders(data)
     
     # Clean and try again
     cleaned_content = clean_json_content(content)
-    try:
-        data = json.loads(cleaned_content)
-        if "founders" in data:
-            logger.info(f"Successfully parsed cleaned JSON with {len(data.get('founders', []))} founders")
-            return process_founders(data)
-    except json.JSONDecodeError:
-        logger.info("Cleaned JSON parsing failed, trying extraction...")
+    if data := try_parse_json(cleaned_content, "cleaned content"):
+        return process_founders(data)
     
-    # Try to extract JSON from text
-    json_pattern = r'\{[\s\S]*"founders"[\s\S]*\}'
-    match = re.search(json_pattern, cleaned_content, re.DOTALL)
+    # Try to extract JSON from text using more specific pattern
+    json_patterns = [
+        r'\{[\s\S]*?"founders"[\s\S]*?\}(?=\s*$)',  # Matches JSON object ending at the end of string
+        r'\{[\s\S]*?"founders"[\s\S]*?\}(?=\s*[^\}])',  # Matches JSON object followed by non-brace
+        r'\{(?:[^{}]|\{[^{}]*\})*\}'  # Matches balanced braces
+    ]
     
-    if match:
-        try:
+    for i, pattern in enumerate(json_patterns):
+        match = re.search(pattern, cleaned_content)
+        if match:
             json_str = clean_json_content(match.group(0))
-            data = json.loads(json_str)
-            if "founders" in data:
-                logger.info(f"Successfully extracted and parsed JSON with {len(data.get('founders', []))} founders")
+            if data := try_parse_json(json_str, f"pattern {i + 1}"):
                 return process_founders(data)
-        except json.JSONDecodeError as e:
-            logger.error(f"Extracted JSON parsing failed: {str(e)}")
     
-    logger.error("Could not parse JSON from response")
+    # Last resort: try to parse each line as JSON
+    for line in content.split('\n'):
+        line = line.strip()
+        if line and line[0] == '{' and line[-1] == '}':
+            if data := try_parse_json(line, "line-by-line"):
+                return process_founders(data)
+    
+    logger.error("Could not parse JSON from response after all attempts")
     logger.info("Raw content:")
     logger.info(content)
     return [], None
@@ -99,15 +118,15 @@ def process_founders(data: Dict[str, Any]) -> Tuple[List[FounderInfo], Optional[
         try:
             # Create FounderInfo object
             founder = FounderInfo(
-                name=founder_data.get("name", "Not publicly listed"),
-                title=founder_data.get("title", "Not publicly listed"),
-                education=founder_data.get("education"),
-                work_experience=founder_data.get("work_experience"),
-                achievements=founder_data.get("achievements"),
-                previous_startups=founder_data.get("previous_startups"),
-                expertise=founder_data.get("expertise"),
-                age=founder_data.get("age", "Not publicly listed"),
-                location=founder_data.get("location", "Not publicly listed"),
+                name=founder_data.get("name", "/"),
+                title=founder_data.get("title", "/"),
+                education=founder_data.get("education", "/"),
+                work_experience=founder_data.get("work_experience", "/"),
+                achievements=founder_data.get("achievements", "/"),
+                previous_startups=founder_data.get("previous_startups", "/"),
+                expertise=founder_data.get("expertise", "/"),
+                age=founder_data.get("age", "/"),
+                location=founder_data.get("location", "/"),
                 social_profiles=founder_data.get("social_profiles")
             )
             founders.append(founder)
@@ -156,7 +175,7 @@ Also include:
 - How the founders met or came together
 
 IMPORTANT:
-- For any information that is not publicly available or cannot be found, use "Not available" as the value. Do not leave fields empty or null.
+- For any information that is not publicly available or cannot be found, use "/" as the value. Do not leave fields empty or null.
 - Format all numeric values as strings (e.g., age should be "35" not 35).
 - For durations and years, always use string format (e.g., "2020-2023", "2019").
 
@@ -233,12 +252,11 @@ Return only the JSON object, no markdown formatting or explanations."""
             
             result = response.json()
             
-            # Debug logging (only if DEBUG is set)
-            if os.environ.get("DEBUG", "").lower() == "true":
-                print("\n==== PERPLEXITY API RESPONSE ====")
-                print(f"Status Code: {response.status_code}")
-                print(json.dumps(result, indent=2))
-                print("================================\n")
+
+            print("\n==== PERPLEXITY API RESPONSE ====")
+            print(f"Status Code: {response.status_code}")
+            print(json.dumps(result, indent=2))
+            print("================================\n")
             
             logger.info(f"Perplexity API response received. Status: {response.status_code}")
             

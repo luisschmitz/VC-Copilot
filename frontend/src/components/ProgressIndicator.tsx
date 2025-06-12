@@ -3,7 +3,7 @@
 import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface ProgressIndicatorProps {
-  currentStep: 'idle' | 'analyzing' | 'complete';
+  currentStep: 'idle' | 'analyzing' | 'founders' | 'funding' | 'deep_dive' | 'evaluation' | 'complete';
   isLoading: boolean;
 }
 
@@ -20,21 +20,23 @@ export default function ProgressIndicator({ currentStep, isLoading }: ProgressIn
     if (currentStep === 'complete') return 'complete';
     
     // During analysis, show steps in sequence
-    const analysisSteps = ['website', 'founders', 'funding', 'deep_dive', 'evaluation'];
-    const currentStepIndex = analysisSteps.indexOf(stepId);
+    const analysisSteps = ['analyzing', 'founders', 'funding', 'deep_dive', 'evaluation'];
+    const currentStepIndex = analysisSteps.indexOf(currentStep);
+    const stepIndex = analysisSteps.indexOf(stepId);
     
-    if (currentStepIndex === -1) return 'upcoming';
-    if (currentStepIndex === analysisSteps.indexOf('website')) return 'in_progress';
-    if (currentStepIndex <= 2) return 'in_progress'; // Show parallel steps
+    if (stepIndex === -1) return 'upcoming';
+    
+    if (stepIndex < currentStepIndex) return 'complete';
+    if (stepIndex === currentStepIndex) return 'in_progress';
     return 'upcoming';
   };
 
   const steps: Step[] = [
     { 
-      id: 'website',
+      id: 'analyzing',
       name: 'Website Data',
       description: 'Fetching website information',
-      status: getStepStatus('website')
+      status: getStepStatus('analyzing')
     },
     {
       id: 'founders',
@@ -50,14 +52,14 @@ export default function ProgressIndicator({ currentStep, isLoading }: ProgressIn
     },
     {
       id: 'deep_dive',
-      name: 'Deep Dive Analysis',
-      description: 'Analyzing startup potential',
+      name: 'Deep Dive',
+      description: 'Analyzing startup details',
       status: getStepStatus('deep_dive')
     },
     {
       id: 'evaluation',
-      name: 'Founder Evaluation',
-      description: 'Evaluating founder potential',
+      name: 'Evaluation',
+      description: 'Evaluating founder profiles',
       status: getStepStatus('evaluation')
     }
   ];
@@ -71,7 +73,13 @@ export default function ProgressIndicator({ currentStep, isLoading }: ProgressIn
           <div 
             className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-600 transition-all duration-500"
             style={{ 
-              width: `${currentStep === 'idle' ? '0%' : currentStep === 'analyzing' ? '60%' : '100%'}` 
+              width: `${(() => {
+                if (currentStep === 'idle') return '0%';
+                if (currentStep === 'complete') return '100%';
+                const steps = ['analyzing', 'founders', 'funding', 'deep_dive', 'evaluation'];
+                const currentIndex = steps.indexOf(currentStep);
+                return `${Math.round((currentIndex + 1) / steps.length * 100)}%`;
+              })()}`
             }}
           />
         </div>

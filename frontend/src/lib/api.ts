@@ -2,6 +2,13 @@ import axios from 'axios';
 type AxiosError = any; // Temporary type until we update axios version
 import { AnalysisRequest, AnalysisResponse, ScrapedData, FounderResponse, FundingNewsResponse } from '@/types/api';
 
+// Ensure EventSource is available in the global scope
+declare global {
+  interface Window {
+    EventSource: typeof EventSource;
+  }
+}
+
 // Create axios instance with base URL
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001',
@@ -38,9 +45,16 @@ const handleApiError = (error: AxiosError, context: string) => {
   }
 };
 
+interface AnalysisStartResponse {
+  analysis_id: string;
+}
+
 interface ApiService {
   healthCheck: () => Promise<any>;
   analyzeStartup: (request: AnalysisRequest) => Promise<AnalysisResponse>;
+  getFounderInfo: (url: string) => Promise<FounderResponse>;
+  scrapeWebsite: (url: string, maxPages?: number) => Promise<ScrapedData>;
+  getFundingNews: (url: string) => Promise<FundingNewsResponse>;
 }
 
 export const apiService: ApiService = {
@@ -51,11 +65,44 @@ export const apiService: ApiService = {
       return response.data as { status: string };
     } catch (error) {
       handleApiError(error as AxiosError, 'Health check');
-      return { status: 'error' };
+      throw error;
     }
   },
 
-  // Main analyze endpoint
+
+
+  // Individual data source endpoints
+  getFounderInfo: async (url: string): Promise<FounderResponse> => {
+    try {
+      const response = await api.post<FounderResponse>('/founders', null, { params: { url } });
+      return response.data;
+    } catch (error) {
+      handleApiError(error as AxiosError, 'Founder information');
+      throw error;
+    }
+  },
+
+  scrapeWebsite: async (url: string, maxPages: number = 3): Promise<ScrapedData> => {
+    try {
+      const response = await api.post<ScrapedData>('/scrape', null, { params: { url, max_pages: maxPages } });
+      return response.data;
+    } catch (error) {
+      handleApiError(error as AxiosError, 'Website scraping');
+      throw error;
+    }
+  },
+
+  getFundingNews: async (url: string): Promise<FundingNewsResponse> => {
+    try {
+      const response = await api.post<FundingNewsResponse>('/funding-news', null, { params: { url } });
+      return response.data;
+    } catch (error) {
+      handleApiError(error as AxiosError, 'Funding news');
+      throw error;
+    }
+  },
+
+  // Full analysis endpoint
   analyzeStartup: async (request: AnalysisRequest): Promise<AnalysisResponse> => {
     try {
       const response = await api.post<AnalysisResponse>('/analyze', request);
