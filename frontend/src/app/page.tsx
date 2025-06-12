@@ -75,10 +75,10 @@ export default function Home() {
               <div className="p-6">
                 <FounderSection 
                   founderData={{
-                    founders: analysisData.founder_data,
-                    founding_story: analysisData.founding_story,
-                    company_name: analysisData.company_name,
-                    url: analysisData.url
+                    founders: analysisData.founder_data || [],
+                    founding_story: analysisData.founding_story || '',
+                    company_name: analysisData.company_name || '',
+                    url: analysisData.url || ''
                   }}
                 />
               </div>

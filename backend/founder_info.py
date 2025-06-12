@@ -155,7 +155,10 @@ async def fetch_founder_information(url: str) -> Tuple[List[FounderInfo], Option
 Also include:
 - How the founders met or came together
 
-IMPORTANT: For any information that is not publicly available or cannot be found, use "Not available" as the value. Do not leave fields empty or null.
+IMPORTANT:
+- For any information that is not publicly available or cannot be found, use "Not available" as the value. Do not leave fields empty or null.
+- Format all numeric values as strings (e.g., age should be "35" not 35).
+- For durations and years, always use string format (e.g., "2020-2023", "2019").
 
 Format your response as a valid JSON object with the following structure:
 {{
@@ -167,7 +170,7 @@ Format your response as a valid JSON object with the following structure:
                 {{
                     "institution": "University Name",
                     "degree": "Degree Type",
-                    "year": "Graduation Year"
+                    "year": "Graduation Year (as string)"
                 }}
             ],
             "work_experience": [

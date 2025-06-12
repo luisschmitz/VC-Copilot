@@ -7,7 +7,7 @@ interface FounderSectionProps {
 }
 
 export default function FounderSection({ founderData }: FounderSectionProps) {
-  const { founders, founding_story, company_name } = founderData;
+  const { founders = [], founding_story = '', company_name = '' } = founderData || {};
 
   return (
     <div>
